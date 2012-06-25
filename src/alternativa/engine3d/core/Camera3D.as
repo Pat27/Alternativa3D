@@ -191,6 +191,9 @@ public class Camera3D extends Object3D {
 	// 3 - ssao
 	public var effectMode:int = 0;
 
+	public var ssaoSize:Number = 1;
+	public var ssaoSoftness:Number = 1;
+
 	/**
 	 * @private
 	 */
@@ -450,6 +453,8 @@ public class Camera3D extends Object3D {
 				// Render
 				renderer.render(context3D);
 
+				// TODO: toggle off z-buffer
+				// TODO: toggle off culling
 				if (effectMode > 0) {
 					// TODO: Half-sized scaled depth buffer
 					rect.width = view._width;
@@ -463,11 +468,15 @@ public class Camera3D extends Object3D {
 					if (effectMode == 3 || effectMode == 4) {
 						// apply ssao
 
-						// TODO: use lower quad instead of scissor
+						// TODO: use small quad instead of scissor
 						context3D.setRenderToTexture(ssaoTexture, true, 0, 0);
 						context3D.clear(0, 0);
 						ssaoEffect.scaleX = 1;
 						ssaoEffect.scaleY = 1;
+						ssaoEffect.width = 1 << effectTextureLog2Width;
+						ssaoEffect.height = 1 << effectTextureLog2Height;
+						ssaoEffect.size = ssaoSize;
+						ssaoEffect.softness = ssaoSoftness;
 						ssaoEffect.depthTexture = depthTexture;
 						ssaoEffect.collectQuadDraw(this);
 						renderer.render(context3D);

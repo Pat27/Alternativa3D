@@ -9,14 +9,15 @@ package alternativa.engine3d.materials {
 	import alternativa.engine3d.materials.compiler.Procedure;
 	import alternativa.engine3d.resources.Geometry;
 
+	import flash.display.BitmapData;
 	import flash.display3D.Context3D;
 	import flash.display3D.Context3DProgramType;
+	import flash.display3D.Context3DTextureFormat;
 	import flash.display3D.VertexBuffer3D;
 	import flash.display3D.textures.Texture;
 	import flash.utils.Dictionary;
 
 	use namespace alternativa3d;
-
 	public class SSAOEffect {
 
 		private static var caches:Dictionary = new Dictionary(true);
@@ -24,18 +25,17 @@ package alternativa.engine3d.materials {
 		private var programsCache:Vector.<DepthMaterialProgram>;
 
 		public var depthTexture:Texture;
+		private var rotationTexture:Texture;
 
 		private var quadGeometry:Geometry;
 
 		public var scaleX:Number = 1;
 		public var scaleY:Number = 1;
+		public var width:Number = 0;
+		public var height:Number = 0;
 
-		public var width:int = 1024;
-		public var height:int = 1024;
-		public var offset:int = 3;
-		public var bias:Number = -0.1;
-		public var multiplier:Number = 0.7;
-		public var maxR:Number = 0.5;
+		public var size:Number = 1;
+		public var softness:Number = 1;
 
 		public function SSAOEffect() {
 			quadGeometry = new Geometry();
@@ -55,7 +55,7 @@ package alternativa.engine3d.materials {
 				"#a1=aUV",
 				"#v0=vUV",
 				"#c0=cScale",
-				"mul v0, a1, c0",
+				"mul v0, a1.xyxy, c0.xyzw",
 				"mov o0, a0"
 			], "vertexProcedure"));
 
@@ -69,160 +69,129 @@ package alternativa.engine3d.materials {
 
 			var ssaoProcedure:Procedure = new Procedure([
 				"#v0=vUV",
-				"#c0=cConstants",	// decode const
-				"#c1=cOffset",		// offset/width, offset/height, -offset/width, -offset/height
-				"#c2=cCoeff",		// maxR, multiplier, 1/9, 1
+				"#c0=cDecDepth",	// decode const (1, 1/255, 1)
+				"#c1=cOffset0",		// .w = (far - near)
+				"#c2=cOffset1",		// .w = 2
+				"#c3=cOffset2",		// .w = 4
+				"#c4=cOffset3",		// .w = 2/(far - near)
+				"#c5=cOffset4",		// .w = 64
+				"#c6=cOffset5",		// .w = 1/4
+				"#c7=cOffset6",		// .w = -0.075
+				"#c8=cOffset7",		// .w = 0.5
 				"#s0=sDepth",
+				"#s1=sRotation",
 				// unpack depth
-				// v0 - current point
-				// t0 - texture value
-				// t1 - coordinates
-
-				// t2.x - P depth
-				// t2.y - B depth
-				// t2.z - Current point depth
-				// c2.x - l (= P - B)
-
-				// t3.x = C - B
-				// t3.w - sum
-
-				"mov t1.x, c2.w",
-				"sub t1, t1.x, t1.x",
-				"mov t3.w, t1.x",
-
-				// 0 segment
-				// -------------
 				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.x, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t2.y, t2.x, c2.x",									// calculate B\
-				"mov t4, c1",
-//				"div t4.x, c1.x, t2.x",									// calculate Offsets
-//				"div t4.y, c1.y, t2.x",
-//				"div t4.z, c1.z, t2.x",
-//				"div t4.w, c1.w, t2.x",
-
-				// 1 segment
-				"add t1.x, v0.x, t4.x",									// calculate coordinates
-				"mov t1.y, v0.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",	// get depth value
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 2 segment
-				"add t1.x, v0.x, t4.z",
-				"mov t1.y, v0.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 3 segment
-				"mov t1.x, v0.x",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 4 segment
-				"mov t1.x, v0.x",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 5 segment
-				"add t1.x, v0.x, t4.z",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 6 segment
-				"add t1.x, v0.x, t4.x",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 7 segment
-				"add t1.x, v0.x, t4.z",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// 8 segment
-				"add t1.x, v0.x, t4.x",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
-
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
-
-				// ------------
-//				"mov t0.w, c0",
-//				"mov t0.w, c1",
-//				"mov t0.w, c2",
-
-				"mul t3.w, t3.w, c2.z",		// multiplie sum of Δz
-
-				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
-				"mul t3.w, t3.w, c2.y",		// multiplie sum of Δz
-				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
-
-				"mov o0, t3.w"
+				"dp3 t0.w, t0, c0",
+				// calculate world z = z*(far-near)
+				"mul t0.z, t0.w, c1.w",
+				// calculate scale: scale.xy = (z/4 + 2)/z    scale.z = 2*(z/4 + 2)/(far-near)
+				"div t1, t0.z, c3.w",
+				"add t1.xyz, t1.xyz, c2.w",
+				"div t1.xy, t1.xy, t0.z",
+				"mul t1.z, t1.z, c4.w",
+				// calculate diff_scale = 64/scale.z
+				"div t1.w, c5.w, t1.z",
+				// sample mirror plane
+				"tex t5, v0.zw, s1 <2d, repeat, nearest, mipnone>",
+//				"sub t5, t5, c8.w",
+//				"div t5, t5, c8.w",
+				// scale vector and sample depth
+				"mul t2, c1, t1",
+				// mirror by plane t2 = t2 - 2*dp3(t2, t5)
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.x, t2, c0",  // unpack and add t2.z
+				"mul t2, c2, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.y, t2, c0",  // unpack and add t2.z
+				"mul t2, c3, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.z, t2, c0",  // unpack and add t2.z
+				"mul t2, c4, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.w, t2, c0",  // unpack and add t2.z
+				// calculate visibility sum
+				// diff = depths - center_z
+				"sub t3, t3, t0.w,",
+				"mul t3, t3, t1.w",
+				"sat t4, t3",
+				// [REPEAT_ONCE]
+				"mul t2, c5, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.x, t2, c0",  // unpack and add t2.z
+				"mul t2, c6, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.y, t2, c0",  // unpack and add t2.z
+				"mul t2, c7, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.z, t2, c0",  // unpack and add t2.z
+				"mul t2, c8, t1",
+				"dp3 t2.w, t2, t5",
+				"add t2.w, t2.w, t2.w",
+				"sub t2.xyz, t2.xyz, t2.w",
+				"add t2.xy, v0.xy, t2.xy",
+				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t3.w, t2, c0",  // unpack and add t2.z
+				// calculate visibility sum
+				// diff = depths - center_z
+				"sub t3, t3, t0.w,",
+				"mul t3, t3, t1.w",
+				"sat t3, t3",
+				"add t4, t4, t3",
+				// weighted sum and output
+				"dp4 t4.x, t4, c6.w",  // 1/4
+				"add t4.x, t4.x, c7.w", // -0.075
+				"mov o0, t4.x"
 			]);
 			fragmentLinker.addProcedure(ssaoProcedure);
 
 			fragmentLinker.varyings = vertexLinker.varyings;
 			return new DepthMaterialProgram(vertexLinker, fragmentLinker);
+		}
+
+		private static const offsets:Vector.<Number> = initOffsets();
+
+		private static function initOffsets():Vector.<Number> {
+			var result:Vector.<Number> = new Vector.<Number>(32);
+			for (var i:int = 0; i < 32; i+=4) {
+				var x:Number = (i == 0 || i >= 5*4) ? 1 : -1;
+				var y:Number = (i == 0 || i == 3*4 || i == 4*4 || i == 7*4) ? 1 : -1;
+				var z:Number = ((i/4) % 2 == 0) ? 1 : -1;
+				var step:Number = (i/4 + 1)*(1 - 1/8);
+				var scale:Number = 0.025*step/Math.sqrt(x*x + y*y + z*z);
+				result[i] = scale*x;
+				result[i + 1] = scale*y;
+				result[i + 2] = scale*z;
+			}
+			return result;
 		}
 
 		public function collectQuadDraw(camera:Camera3D):void {
@@ -234,6 +203,27 @@ package alternativa.engine3d.materials {
 				cachedContext3D = camera.context3D;
 				programsCache = caches[cachedContext3D];
 				quadGeometry.upload(camera.context3D);
+
+				var bmd:BitmapData = new BitmapData(4, 4, false, 0x0);
+				bmd.setPixel(0, 0, 0x967bfe);
+				bmd.setPixel(1, 0, 0x7f0361);
+				bmd.setPixel(2, 0, 0xa4f663);
+				bmd.setPixel(3, 0, 0x9bb10e);
+				bmd.setPixel(0, 1, 0x3653dd);
+				bmd.setPixel(1, 1, 0x028e8f);
+				bmd.setPixel(2, 1, 0x20394f);
+				bmd.setPixel(3, 1, 0x31a020);
+				bmd.setPixel(0, 2, 0x39e873);
+				bmd.setPixel(1, 2, 0xb2d8cb);
+				bmd.setPixel(2, 2, 0x46c4da);
+				bmd.setPixel(3, 2, 0xf1a452);
+				bmd.setPixel(0, 3, 0xe13855);
+				bmd.setPixel(1, 3, 0xe958bd);
+				bmd.setPixel(2, 3, 0x9019cb);
+				bmd.setPixel(3, 3, 0x75490c);
+				rotationTexture = camera.context3D.createTexture(4, 4, Context3DTextureFormat.BGRA, false);
+				rotationTexture.uploadFromBitmapData(bmd);
+
 				if (programsCache == null) {
 					programsCache = new Vector.<DepthMaterialProgram>(1);
 					programsCache[0] = setupProgram();
@@ -252,13 +242,22 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexBufferAt(program.aPosition, positionBuffer, quadGeometry._attributesOffsets[VertexAttributes.POSITION], VertexAttributes.FORMATS[VertexAttributes.POSITION]);
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
-			var camLength:Number = camera.farClipping - camera.nearClipping;
-			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, camLength, camLength/255, 0, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset/width, offset/height, -offset/width, -offset/height);
+			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, width*scaleX/4, height*scaleY/4);
+			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 1, 0);
 
-			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff,   maxR, multiplier, 1/9, 1);
+			const sc:Number = 2*size;
+
+			offsets[3] = camera.farClipping - camera.nearClipping;
+			offsets[4 + 3] = sc;
+			offsets[8 + 3] = 8/sc;
+			offsets[12 + 3] = 2/offsets[3];
+			offsets[16 + 3] = 64*softness;
+			offsets[20 + 3] = 1/4;
+			offsets[24 + 3] = -0.075;
+			offsets[28 + 3] = 0.5;
+			drawUnit.setFragmentConstantsFromVector(program.cOffset0, offsets, 8);
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
+			drawUnit.setTextureAt(program.sRotation, rotationTexture);
 			// Send to render
 			camera.renderer.addDrawUnit(drawUnit, Renderer.OPAQUE);
 		}
@@ -276,10 +275,10 @@ class DepthMaterialProgram extends ShaderProgram {
 	public var aPosition:int = -1;
 	public var aUV:int = -1;
 	public var cScale:int = -1;
-	public var cConstants:int = -1;
-	public var cOffset:int = -1;
-	public var cCoeff:int = -1;
+	public var cDecDepth:int = -1;
+	public var cOffset0:int = -1;
 	public var sDepth:int = -1;
+	public var sRotation:int = -1;
 
 	public function DepthMaterialProgram(vertex:Linker, fragment:Linker) {
 		super(vertex, fragment);
@@ -291,10 +290,10 @@ class DepthMaterialProgram extends ShaderProgram {
 		aPosition =  vertexShader.findVariable("aPosition");
 		aUV =  vertexShader.findVariable("aUV");
 		cScale = vertexShader.findVariable("cScale");
-		cConstants = fragmentShader.findVariable("cConstants");
-		cOffset = fragmentShader.findVariable("cOffset");
-		cCoeff = fragmentShader.findVariable("cCoeff");
+		cDecDepth = fragmentShader.findVariable("cDecDepth");
+		cOffset0 = fragmentShader.findVariable("cOffset0");
 		sDepth = fragmentShader.findVariable("sDepth");
+		sRotation = fragmentShader.findVariable("sRotation");
 	}
 
 }
