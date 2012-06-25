@@ -16,6 +16,7 @@ package alternativa.engine3d.materials {
 	import flash.utils.Dictionary;
 
 	use namespace alternativa3d;
+
 	public class SSAOEffect {
 
 		private static var caches:Dictionary = new Dictionary(true);

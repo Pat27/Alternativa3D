@@ -12,6 +12,7 @@ package alternativa.engine3d.core {
 	import alternativa.engine3d.materials.DecodeDepthEffect;
 	import alternativa.engine3d.materials.EncodeDepthMaterial;
 	import alternativa.engine3d.materials.SSAOEffect;
+	import alternativa.engine3d.materials.SSAOVolumetric;
 
 	import flash.display.Bitmap;
 	import flash.display.BitmapData;
@@ -175,11 +176,14 @@ public class Camera3D extends Object3D {
 	private var encDepthMaterial:EncodeDepthMaterial = new EncodeDepthMaterial();
 	private var decDepthEffect:DecodeDepthEffect = new DecodeDepthEffect();
 	private var ssaoEffect:SSAOEffect = new SSAOEffect();
+	private var ssaoVolumetricEffect:SSAOVolumetric= new SSAOVolumetric();
+
 
 	private var depthTexture:Texture;
 	private var ssaoTexture:Texture;
 	private var effectTextureLog2Width:int = -1;
 	private var effectTextureLog2Height:int = -1;
+
 
 	// 0 - none
 	// 1 - render encoded depth
@@ -456,7 +460,7 @@ public class Camera3D extends Object3D {
 //					context3D.clear(0, 0);
 					depthRenderer.render(context3D);
 
-					if (effectMode >= 3) {
+					if (effectMode == 3 || effectMode == 4) {
 						// apply ssao
 
 						// TODO: use lower quad instead of scissor
@@ -478,7 +482,31 @@ public class Camera3D extends Object3D {
 						decDepthEffect.encodeEnabled = false;
 						decDepthEffect.collectQuadDraw(this);
 						renderer.render(context3D);
-					} else {
+					}
+					if (effectMode == 5 || effectMode == 6) {
+						// apply ssao
+
+						// TODO: use lower quad instead of scissor
+						context3D.setRenderToTexture(ssaoTexture, true, 0, 0);
+						context3D.clear(0, 0);
+						ssaoVolumetricEffect.scaleX = 1;
+						ssaoVolumetricEffect.scaleY = 1;
+						ssaoVolumetricEffect.depthTexture = depthTexture;
+						ssaoVolumetricEffect.collectQuadDraw(this);
+						renderer.render(context3D);
+
+						// render quad to screen
+						context3D.setRenderToBackBuffer();
+						context3D.setScissorRectangle(null);
+						decDepthEffect.multiplyBlend = effectMode == 6;
+						decDepthEffect.scaleX = encDepthMaterial.outputScaleX;
+						decDepthEffect.scaleY = encDepthMaterial.outputScaleY;
+						decDepthEffect.depthTexture = ssaoTexture;
+						decDepthEffect.encodeEnabled = false;
+						decDepthEffect.collectQuadDraw(this);
+						renderer.render(context3D);
+					}
+					if (effectMode <= 2) {
 						// render quad to screen
 						context3D.setRenderToBackBuffer();
 						context3D.setScissorRectangle(null);
