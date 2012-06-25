@@ -29,6 +29,13 @@ package alternativa.engine3d.materials {
 		public var scaleX:Number = 1;
 		public var scaleY:Number = 1;
 
+		public var width:int = 1024;
+		public var height:int = 1024;
+		public var offset:int = 3;
+		public var bias:Number = -0.1;
+		public var multiplier:Number = 0.7;
+		public var maxR:Number = 0.5;
+
 		public function SSAOEffect() {
 			quadGeometry = new Geometry();
 			quadGeometry.addVertexStream([VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.TEXCOORDS[0], VertexAttributes.TEXCOORDS[0]]);
@@ -62,33 +69,154 @@ package alternativa.engine3d.materials {
 			var ssaoProcedure:Procedure = new Procedure([
 				"#v0=vUV",
 				"#c0=cConstants",	// decode const
-				"#c1=cOffset",		// 0.5, 0,
-				"#c2=cCoeff",		// distance, num_sampes, 1
+				"#c1=cOffset",		// offset/width, offset/height, -offset/width, -offset/height
+				"#c2=cCoeff",		// maxR, multiplier, 1/9, 1
 				"#s0=sDepth",
 				// unpack depth
+				// v0 - current point
+				// t0 - texture value
+				// t1 - coordinates
+
+				// t2.x - P depth
+				// t2.y - B depth
+				// t2.z - Current point depth
+				// c2.x - l (= P - B)
+
+				// t3.x = C - B
+				// t3.w - sum
+
+				"mov t1.x, c2.w",
+				"sub t1, t1.x, t1.x",
+				"mov t3.w, t1.x",
+
+				// 0 segment
+				// -------------
 				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t0.w, t0, c0",
-				// sample neighbours
-				"add t1.xy, v0.xy, c1.xy",
+				"dp3 t2.x, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t2.y, t2.x, c2.x",									// calculate B\
+				"mov t4, c1",
+//				"div t4.x, c1.x, t2.x",									// calculate Offsets
+//				"div t4.y, c1.y, t2.x",
+//				"div t4.z, c1.z, t2.x",
+//				"div t4.w, c1.w, t2.x",
+
+				// 1 segment
+				"add t1.x, v0.x, t4.x",									// calculate coordinates
+				"mov t1.y, v0.y",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",	// get depth value
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 2 segment
+				"add t1.x, v0.x, t4.z",
+				"mov t1.y, v0.y",
+				// -------------
 				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t0.x, t0, c0",
-				// check visibility
-				"sub t1.z, t0.w, t0.x",
-				"mul t1.z, t1.z, c2.x",	// 10000/distance
-				"sat t1.z, t1.z",
-				"sub t1.w, c2.z, t1.z",
-				// -offset
-				"sub t1.xy, v0.xy, c1.xy",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 3 segment
+				"mov t1.x, v0.x",
+				"add t1.y, v0.y, t4.y",
+				// -------------
 				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t0.x, t0, c0",
-				// check visibility
-				"sub t1.z, t0.w, t0.x",
-				"mul t1.z, t1.z, c2.x",	// 10000/distance
-				"sat t1.z, t1.z",
-				"sub t1.z, c2.z, t1.z",
-				"add t1.w, t1.w, t1.z",
-				"div t1.w, t1.w, c2.y",
-				"mov o0, t1.w"
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 4 segment
+				"mov t1.x, v0.x",
+				"add t1.y, v0.y, t4.w",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 5 segment
+				"add t1.x, v0.x, t4.z",
+				"add t1.y, v0.y, t4.y",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 6 segment
+				"add t1.x, v0.x, t4.x",
+				"add t1.y, v0.y, t4.y",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 7 segment
+				"add t1.x, v0.x, t4.z",
+				"add t1.y, v0.y, t4.w",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// 8 segment
+				"add t1.x, v0.x, t4.x",
+				"add t1.y, v0.y, t4.w",
+				// -------------
+				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
+				// -------------
+				"sub t3.x, t2.z, t2.y",									// calculate Δz
+				"div t3.y, t3.x, c2.x",
+				"sat t3.z, t3.y",
+
+				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+
+				// ------------
+//				"mov t0.w, c0",
+//				"mov t0.w, c1",
+//				"mov t0.w, c2",
+
+				"mul t3.w, t3.w, c2.z",		// multiplie sum of Δz
+
+				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
+				"mul t3.w, t3.w, c2.y",		// multiplie sum of Δz
+				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
+
+				"mov o0, t3.w"
 			]);
 			fragmentLinker.addProcedure(ssaoProcedure);
 
@@ -123,12 +251,12 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexBufferAt(program.aPosition, positionBuffer, quadGeometry._attributesOffsets[VertexAttributes.POSITION], VertexAttributes.FORMATS[VertexAttributes.POSITION]);
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
+			var camLength:Number = camera.farClipping - camera.nearClipping;
 			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 1, 1/255, 0, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, 0, 0.01, 0, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, camLength, camLength/255, 0, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset/width, offset/height, -offset/width, -offset/height);
 
-			var distance:Number = 10/(camera.farClipping - camera.nearClipping);
-			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff, 10000/distance, 2, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff,   maxR, multiplier, 1/9, 1);
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
 			// Send to render
 			camera.renderer.addDrawUnit(drawUnit, Renderer.OPAQUE);

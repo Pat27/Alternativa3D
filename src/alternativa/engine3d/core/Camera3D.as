@@ -258,6 +258,7 @@ public class Camera3D extends Object3D {
 					depthTexture = context3D.createTexture(1 << log2Width, 1 << log2Height, Context3DTextureFormat.BGRA, true);
 					if (ssaoTexture != null) ssaoTexture.dispose();
 					ssaoTexture = context3D.createTexture(1 << log2Width, 1 << log2Height, Context3DTextureFormat.BGRA, true);
+					trace((1 << log2Width) + " : " + (1 << log2Height));
 					effectTextureLog2Width = log2Width;
 					effectTextureLog2Height = log2Height;
 				}

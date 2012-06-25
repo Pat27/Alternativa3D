@@ -541,6 +541,9 @@ package alternativa.engine3d.materials {
 
 			var key:int = materialKey | (opacityMap != null ? OPACITY_MAP_BIT : 0) | (alphaTest << ALPHA_TEST_OFFSET);
 			var program:StandardMaterialProgram = programs[key];
+			var programCount:int = 0;
+			for each (var el:Object in programs)programCount++;
+			trace(programCount);
 
 			if (program == null) {
 				var vertexLinker:Linker = new Linker(Context3DProgramType.VERTEX);
@@ -1137,7 +1140,9 @@ package alternativa.engine3d.materials {
 						materialKey = (isFirstGroup) ? ((lightMap != null) ? LIGHT_MAP_BIT : 0) : 0;
 						materialKey |= (_normalMapSpace << NORMAL_MAP_SPACE_OFFSET) | ((glossinessMap != null) ? GLOSSINESS_MAP_BIT : 0) | ((specularMap != null) ? SPECULAR_MAP_BIT : 0);
 						materialKey |= light.shadow.type << SHADOW_OFFSET;
-						if (light is OmniLight) materialKey |= 1 << OMNI_LIGHT_OFFSET; else if (light is DirectionalLight) materialKey |= 1 << DIRECTIONAL_LIGHT_OFFSET; else if (light is SpotLight) materialKey |= 1 << SPOT_LIGHT_OFFSET;
+						if (light is OmniLight) materialKey |= 1 << OMNI_LIGHT_OFFSET;
+						else if (light is DirectionalLight) materialKey |= 1 << DIRECTIONAL_LIGHT_OFFSET;
+						else if (light is SpotLight) materialKey |= 1 << SPOT_LIGHT_OFFSET;
 
 						// Для группы создаем программу и дроуюнит
 						// Opaque pass
