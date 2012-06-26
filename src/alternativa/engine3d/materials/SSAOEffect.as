@@ -67,17 +67,19 @@ package alternativa.engine3d.materials {
 			// sample_vis = 1 - sat((center_depth - depth)/distance)
 			// result = sum(vis0, vis1, ...)/num_samples
 
-			var ssaoProcedure:Procedure = new Procedure([
+			var line:int;
+			var ssao:Array = [
 				"#v0=vUV",
 				"#c0=cDecDepth",	// decode const (1, 1/255, 1)
 				"#c1=cOffset0",		// .w = (far - near)
-				"#c2=cOffset1",		// .w = 2
-				"#c3=cOffset2",		// .w = 4
+				"#c2=cOffset1",		// .w = 5.3
+				"#c3=cOffset2",		// .w = 8
 				"#c4=cOffset3",		// .w = 2/(far - near)
 				"#c5=cOffset4",		// .w = 64
 				"#c6=cOffset5",		// .w = 1/4
 				"#c7=cOffset6",		// .w = -0.075
-				"#c8=cOffset7",		// .w = 0.5
+				"#c8=cOffset7",		// .w = 2
+				"#c9=cConstants",	// .x = -0.85*(far-near), 2, 0.55, 1
 				"#s0=sDepth",
 				"#s1=sRotation",
 				// unpack depth
@@ -85,92 +87,81 @@ package alternativa.engine3d.materials {
 				"dp3 t0.w, t0, c0",
 				// calculate world z = z*(far-near)
 				"mul t0.z, t0.w, c1.w",
-				// calculate scale: scale.xy = (z/4 + 2)/z    scale.z = 2*(z/4 + 2)/(far-near)
-				"div t1, t0.z, c3.w",
-				"add t1.xyz, t1.xyz, c2.w",
+				// calculate scale: scale.xy = (z/4 + 2)/z
+//				"div t1, t0.z, c3.w",
+//				"add t1.xyz, t1.xyz, c2.w",
+
+				// scale = 2*sat(w_d/5.3)*(1 + w_d/8)
+				"div t1.x, t0.z, c2.w",
+				"sat t1.x, t1.x",
+				"div t1.y, t0.z, c3.w",
+				"add t1.y, t1.y, c9.w",
+				"mul t1.w, t1.x, t1.y",
+				"mul t1.xyz, t1.w, c8.w",
+
 				"div t1.xy, t1.xy, t0.z",
+				// calc range_scale in t0.z = -0.85*(far - near)/scale.z
+				"div t0.z, c9.x, t1.z",
+				// scale.z = 2*(z/4 + 2)/(far-near)
 				"mul t1.z, t1.z, c4.w",
 				// calculate diff_scale = 64/scale.z
 				"div t1.w, c5.w, t1.z",
 				// sample mirror plane
 				"tex t5, v0.zw, s1 <2d, repeat, nearest, mipnone>",
-//				"sub t5, t5, c8.w",
-//				"div t5, t5, c8.w",
-				// scale vector and sample depth
-				"mul t2, c1, t1",
-				// mirror by plane t2 = t2 - 2*dp3(t2, t5)
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.x, t2, c0",  // unpack and add t2.z
-				"mul t2, c2, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.y, t2, c0",  // unpack and add t2.z
-				"mul t2, c3, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.z, t2, c0",  // unpack and add t2.z
-				"mul t2, c4, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.w, t2, c0",  // unpack and add t2.z
-				// calculate visibility sum
+				"add t5, t5, t5",
+				"sub t5, t5, c9.w",
+			];
+			// t0.w - depth [0..1]
+			// t0.z - range_scale
+			// t1.xyz - scale
+			// t1.w = diff_scale
+			// t5 = mirror plane
+
+			const components:Array = [".x", ".y", ".z", ".w"];
+			line = ssao.length;
+			for (var pass:int = 0; pass < 2; pass++) {
+				for (var i:int = 0; i < 4; i++) {
+					// scale vector
+					ssao[int(line++)] = "mul t2, c" + (4*pass + i) + ", t1";
+					// mirror by plane t2 = t2 - 2*dp3(t2, t5)
+					ssao[int(line++)] = "dp3 t2.w, t2, t5";
+					ssao[int(line++)] = "add t2.w, t2.w, t2.w";
+					ssao[int(line++)] = "sub t2.xyz, t2.xyz, t2.w";
+					// calc uv and sample
+					ssao[int(line++)] = "add t2.xy, v0.xy, t2.xy";
+					ssao[int(line++)] = "tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>";
+					// unpack and add t2.z
+					ssao[int(line++)] = "dp3 t3" + components[i] + ", t2, c0";
+				}
 				// diff = depths - center_z
-				"sub t3, t3, t0.w,",
-				"mul t3, t3, t1.w",
-				"sat t4, t3",
-				// [REPEAT_ONCE]
-				"mul t2, c5, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.x, t2, c0",  // unpack and add t2.z
-				"mul t2, c6, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.y, t2, c0",  // unpack and add t2.z
-				"mul t2, c7, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.z, t2, c0",  // unpack and add t2.z
-				"mul t2, c8, t1",
-				"dp3 t2.w, t2, t5",
-				"add t2.w, t2.w, t2.w",
-				"sub t2.xyz, t2.xyz, t2.w",
-				"add t2.xy, v0.xy, t2.xy",
-				"tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t3.w, t2, c0",  // unpack and add t2.z
-				// calculate visibility sum
-				// diff = depths - center_z
-				"sub t3, t3, t0.w,",
-				"mul t3, t3, t1.w",
-				"sat t3, t3",
-				"add t4, t4, t3",
-				// weighted sum and output
-				"dp4 t4.x, t4, c6.w",  // 1/4
-				"add t4.x, t4.x, c7.w", // -0.075
-				"mov o0, t4.x"
-			]);
+				ssao[int(line++)] = "sub t3, t3, t0.w";
+				// calc occlusion quality. q = (sat(abs(vDist*range_sc)) + sat(vDist*range_sc))/2
+				ssao[int(line++)] = "mul t6, t3, t0.z";
+				ssao[int(line++)] = "abs t7, t6";
+				ssao[int(line++)] = "sat t6, t6";
+				ssao[int(line++)] = "sat t7, t7";
+				ssao[int(line++)] = "add t6, t6, t7";
+				ssao[int(line++)] = "div t6, t6, c9.y";
+				// mul by diff_scale
+				ssao[int(line++)] = "mul t3, t3, t1.w";
+				ssao[int(line++)] = "sat t3, t3";
+				// interpolate value by occlusion quality. t3 = 0.55*t6 + t3*(1 - t6)
+				ssao[int(line++)] = "mul t7, c9.z, t6";
+				ssao[int(line++)] = "sub t6, c9.w, t6";
+				ssao[int(line++)] = "mul t3, t3, t6";
+				if (pass == 0) {
+					ssao[int(line++)] = "add t4, t3, t7";
+				} else {
+					ssao[int(line++)] = "add t3, t3, t7";
+					ssao[int(line++)] = "add t4, t4, t3";
+				}
+			}
+			// weighted sum and output
+			ssao[int(line++)] =	"dp4 t4.x, t4, c6.w";  	// 1/4
+			ssao[int(line++)] =	"add t4.x, t4.x, c7.w"; // -0.075
+			ssao[int(line++)] =	"mov o0, t4.x";
+
+			var ssaoProcedure:Procedure = new Procedure(ssao, "SSAOProcedure");
 			fragmentLinker.addProcedure(ssaoProcedure);
 
 			fragmentLinker.varyings = vertexLinker.varyings;
@@ -185,7 +176,8 @@ package alternativa.engine3d.materials {
 				var x:Number = (i == 0 || i >= 5*4) ? 1 : -1;
 				var y:Number = (i == 0 || i == 3*4 || i == 4*4 || i == 7*4) ? 1 : -1;
 				var z:Number = ((i/4) % 2 == 0) ? 1 : -1;
-				var step:Number = (i/4 + 1)*(1 - 1/8);
+//				var step:Number = (i/4 + 1)*(1 - 1/8);
+				var step:Number = 0.1;
 				var scale:Number = 0.025*step/Math.sqrt(x*x + y*y + z*z);
 				result[i] = scale*x;
 				result[i + 1] = scale*y;
@@ -246,16 +238,18 @@ package alternativa.engine3d.materials {
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 1, 0);
 
 			const sc:Number = 2*size;
+			const dist:Number = camera.farClipping - camera.nearClipping;
 
-			offsets[3] = camera.farClipping - camera.nearClipping;
-			offsets[4 + 3] = sc;
-			offsets[8 + 3] = 8/sc;
-			offsets[12 + 3] = 2/offsets[3];
-			offsets[16 + 3] = 64*softness;
+			offsets[3] = dist;
+			offsets[4 + 3] = 5.3;
+			offsets[8 + 3] = 8;
+			offsets[12 + 3] = 2/dist;
+			offsets[16 + 3] = 64;
 			offsets[20 + 3] = 1/4;
 			offsets[24 + 3] = -0.075;
-			offsets[28 + 3] = 0.5;
+			offsets[28 + 3] = sc;
 			drawUnit.setFragmentConstantsFromVector(program.cOffset0, offsets, 8);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, -0.85*dist*softness, 2, 0.55, 1);
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
 			drawUnit.setTextureAt(program.sRotation, rotationTexture);
 			// Send to render
@@ -277,6 +271,7 @@ class DepthMaterialProgram extends ShaderProgram {
 	public var cScale:int = -1;
 	public var cDecDepth:int = -1;
 	public var cOffset0:int = -1;
+	public var cConstants:int = -1;
 	public var sDepth:int = -1;
 	public var sRotation:int = -1;
 
@@ -292,6 +287,7 @@ class DepthMaterialProgram extends ShaderProgram {
 		cScale = vertexShader.findVariable("cScale");
 		cDecDepth = fragmentShader.findVariable("cDecDepth");
 		cOffset0 = fragmentShader.findVariable("cOffset0");
+		cConstants = fragmentShader.findVariable("cConstants");
 		sDepth = fragmentShader.findVariable("sDepth");
 		sRotation = fragmentShader.findVariable("sRotation");
 	}
