@@ -177,7 +177,7 @@ public class Camera3D extends Object3D {
 	private var encDepthMaterial:EncodeDepthMaterial = new EncodeDepthMaterial();
 	private var decDepthEffect:DecodeDepthEffect = new DecodeDepthEffect();
 	private var ssaoEffect:SSAOEffect = new SSAOEffect();
-	private var ssaoVolumetricEffect:SSAOVolumetric= new SSAOVolumetric();
+	public  var ssaoVolumetricEffect:SSAOVolumetric= new SSAOVolumetric();
 	private var ssaoBlur:SSAOBlur = new SSAOBlur();
 
 	private var depthTexture:Texture;
