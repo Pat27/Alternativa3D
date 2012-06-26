@@ -96,6 +96,7 @@ package alternativa.engine3d.materials {
 				}
 			}
 
+
 			var program:DepthMaterialProgram = programsCache[object.transformProcedure];
 			if (program == null) {
 				program = setupProgram(object);

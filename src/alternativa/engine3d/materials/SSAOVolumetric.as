@@ -39,10 +39,12 @@ package alternativa.engine3d.materials {
 
 		public var width:int = 1024;
 		public var height:int = 1024;
-		public var offset:int = 3;
-		public var bias:Number = -0.1;
-		public var multiplier:Number = 0.7;
-		public var maxR:Number = 0.5;
+		public var offset:int = 6;
+		public var bias:Number = 0.1;
+		public var intensity:Number = 0.9;
+		public var multiplier:Number = 1;
+		public var maxR:Number = 5;
+		public var threshold:Number = 10;
 
 		public function SSAOVolumetric() {
 			quadGeometry = new Geometry();
@@ -55,6 +57,7 @@ package alternativa.engine3d.materials {
 		}
 
 		private function setupProgram():DepthMaterialProgram {
+
 			// project vector in camera
 			var vertexLinker:Linker = new Linker(Context3DProgramType.VERTEX);
 			vertexLinker.addProcedure(new Procedure([
@@ -67,167 +70,134 @@ package alternativa.engine3d.materials {
 			], "vertexProcedure"));
 
 			var fragmentLinker:Linker = new Linker(Context3DProgramType.FRAGMENT);
-
-			// Sample center depth
-			// Sample neighbours depth nearest to our coordinate (delta)
-			// Compare center depth with each neighbour
-			// sample_vis = 1 - sat((center_depth - depth)/distance)
-			// result = sum(vis0, vis1, ...)/num_samples
-
-			var ssaoProcedure:Procedure = new Procedure([
+			var ssaoArray:Array = [
 				"#v0=vUV",
-				"#c0=cConstants",	// decode const
+				"#c0=cConstants",	// camLength, camLength/255, 0, threshold
 				"#c1=cOffset",		// offset/width, offset/height, -offset/width, -offset/height
-				"#c2=cCoeff",		// maxR, multiplier, 1/9, 1
-				"#s0=sDepth",
-				// unpack depth
-				// v0 - current point
-				// t0 - texture value
-				// t1 - coordinates
+				"#c2=cCoeff",		// maxR, intensity, 1/9, 1
+				"#c3=cBias",		// bias, multiplier, 0, 0
+				"#s0=sDepth"
+			];
 
-				// t2.x - P depth
-				// t2.y - B depth
-				// t2.z - C (Current point depth)
-				// c2.x - l (= P - B)
+			var index:int = 6;
+			// v0 - current point
+			// t0 - texture value
+			// t1 - coordinates
 
-				// t3.x = C - B
-				// t3.w - sum
+			// t2.x - P depth
+			// t2.y - B depth
+			// t2.z - C (Current point depth)
+			// t2.w - T - B
+			// c2.x - l
+			// c0.w - t
 
-				"mov t1.x, c2.w",
-				"sub t1, t1.x, t1.x",
-				"mov t3.w, t1.x",
+			// t3.x = C - B
+			// t3.y - g(C) = sat[(C - B)/(T - B)]
+			// t3.z - f(C) = sat[(C - B)/(P - B)]
+			// t3.w - sum
 
-				// 0 segment
-				// -------------
-				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.x, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t2.y, t2.x, c2.x",									// calculate B\
-				"mov t4, c1",
-//				"div t4.x, c1.x, t2.x",									// calculate Offsets
-//				"div t4.y, c1.y, t2.x",
-//				"div t4.z, c1.z, t2.x",
-//				"div t4.w, c1.w, t2.x",
+			// init
+			ssaoArray[index++] = "mov t1.x, c2.w";
+			ssaoArray[index++] = "sub t1, t1.x, t1.x";	// t1 = 0
+			ssaoArray[index++] = "mov t3.w, t1.x";		// t3.w = 0
+			ssaoArray[index++] = "mov t0.z, t1.x";		// t0.w = 0
 
-				// 1 segment
-				"add t1.x, v0.x, t4.x",									// calculate coordinates
-				"mov t1.y, v0.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",	// get depth value
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+			// 0 segment
+			// -------------
+			ssaoArray[index++] = "tex t0.xy, v0, s0 <2d, clamp, nearest, mipnone>";
+			ssaoArray[index++] = "dp3 t2.x, t0.xyz, c0.xyz";								// decode value
+			// -------------
+			ssaoArray[index++] = "sub t2.y, t2.x, c2.x";									// calculate B
+//			ssaoArray[index++] = "mov t4, c1";												// calculate Offsets
+			ssaoArray[index++] = "div t4.xyzw, c1.xyzw, t2.x";								// calculate Offsets
+			ssaoArray[index++] = "sub t2.w, t2.x, c0.w";									// T
+			ssaoArray[index++] = "sub t2.w, t2.w, t2.y";									// T - B
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			ssaoArray[index++] = "add t3.w, t3.w, c2.w";
 
-				// 2 segment
-				"add t1.x, v0.x, t4.z",
-				"mov t1.y, v0.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			function getDepthValue(ssaoArray:Array):void{
+				ssaoArray[index++] = "tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>";
+				ssaoArray[index++] = "dp3 t2.z, t0.xyz, c0.xyz";
+			}
+			function calculateSegment(ssaoArray:Array):void{
+				ssaoArray[index++] = "sub t3.x, t2.z, t2.y";									// calculate Δz = C-B
+				ssaoArray[index++] = "div t3.z, t3.x, c2.x";									// (C-B)/l
+				ssaoArray[index++] = "sat t3.z, t3.z";											// f(C)
 
-				// 3 segment
-				"mov t1.x, v0.x",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+				ssaoArray[index++] = "div t3.y, t3.x, t2.w";									// (C - B)/(T - B)
+				ssaoArray[index++] = "sat t3.y, t3.y";											// g(C)
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+				ssaoArray[index++] = "add t3.w, t3.w, t3.z";									// calculate sum of f(C) + g(C)
+				ssaoArray[index++] = "add t3.w, t3.w, t3.y";									//
+			}
 
-				// 4 segment
-				"mov t1.x, v0.x",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			// 1 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.x";									// calculate coordinates
+			ssaoArray[index++] = "mov t1.y, v0.y";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				// 5 segment
-				"add t1.x, v0.x, t4.z",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+			// 2 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.z";
+			ssaoArray[index++] = "mov t1.y, v0.y";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			// 3 segment
+			ssaoArray[index++] = "mov t1.x, v0.x";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.y";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				// 6 segment
-				"add t1.x, v0.x, t4.x",
-				"add t1.y, v0.y, t4.y",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+			// 4 segment
+			ssaoArray[index++] = "mov t1.x, v0.x";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.w";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			// 5 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.z";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.y";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				// 7 segment
-				"add t1.x, v0.x, t4.z",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+			// 6 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.x";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.y";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			// 7 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.z";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.w";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				// 8 segment
-				"add t1.x, v0.x, t4.x",
-				"add t1.y, v0.y, t4.w",
-				// -------------
-				"tex t0.xy, t1.xy, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t2.z, t0.xyz, c0.xyz",								// decode value
-				// -------------
-				"sub t3.x, t2.z, t2.y",									// calculate Δz
-				"div t3.y, t3.x, c2.x",
-				"sat t3.z, t3.y",
+			// 8 segment
+			ssaoArray[index++] = "add t1.x, v0.x, t4.x";
+			ssaoArray[index++] = "add t1.y, v0.y, t4.w";
+			getDepthValue(ssaoArray);
+			calculateSegment(ssaoArray);
 
-				"add t3.w, t3.w, t3.z",									// calculate sum of Δz
+			// ------------
 
-				// ------------
-//				"mov t0.w, c0",
-//				"mov t0.w, c1",
-//				"mov t0.w, c2",
+			ssaoArray[index++] = "mul t3.w, t3.w, c2.z";		// * 1/9
+			ssaoArray[index++] = "add t3.w, t3.w, c3.x";		// + bias
+			ssaoArray[index++] = "mul t3.w, t3.w, c3.y";		// * multiplier
+			ssaoArray[index++] = "sat t3.w, t3.w";
 
-				"mul t3.w, t3.w, c2.z",		//  * 1/9
 
-				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
-				"mul t3.w, t3.w, c2.y",		// multiplie sum of Δz
-				"sub t3.w, c2.w, t3.w",		// 1 - sum of Δz
+			ssaoArray[index++] = "sub t3.w, c2.w, t3.w";		// 1 - sum of Δz
+			ssaoArray[index++] = "mul t3.w, t3.w, c2.y";		// multiply on intensity
+			ssaoArray[index++] = "sub t3.w, c2.w, t3.w";		// 1 - sum of Δz
 
-				"mov o0, t3.w"
-			]);
+			ssaoArray[index++] = "mov o0, t3.w";
+
+
+			var ssaoProcedure:Procedure = Procedure.compileFromArray(ssaoArray, "SSAOProcedure");
 			fragmentLinker.addProcedure(ssaoProcedure);
-
 			fragmentLinker.varyings = vertexLinker.varyings;
 			return new DepthMaterialProgram(vertexLinker, fragmentLinker);
 		}
@@ -261,10 +231,12 @@ package alternativa.engine3d.materials {
 			// Constants
 			var camLength:Number = camera.farClipping - camera.nearClipping;
 			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, camLength, camLength/255, 0, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset/width, offset/height, -offset/width, -offset/height);
 
-			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff,   maxR, multiplier, 1/9, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, camLength, camLength/255, 0, threshold);
+			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset/width, offset/height, -offset/width, -offset/height);
+			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff,  maxR, intensity, 1/9, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cBias,   bias, multiplier, 0, 0);
+
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
 			// Send to render
 			camera.renderer.addDrawUnit(drawUnit, Renderer.OPAQUE);
@@ -285,6 +257,7 @@ class DepthMaterialProgram extends ShaderProgram {
 	public var cConstants:int = -1;
 	public var cOffset:int = -1;
 	public var cCoeff:int = -1;
+	public var cBias:int = -1;
 	public var sDepth:int = -1;
 
 	public function DepthMaterialProgram(vertex:Linker, fragment:Linker) {
@@ -300,6 +273,7 @@ class DepthMaterialProgram extends ShaderProgram {
 		cConstants = fragmentShader.findVariable("cConstants");
 		cOffset = fragmentShader.findVariable("cOffset");
 		cCoeff = fragmentShader.findVariable("cCoeff");
+		cBias = fragmentShader.findVariable("cBias");
 		sDepth = fragmentShader.findVariable("sDepth");
 	}
 
