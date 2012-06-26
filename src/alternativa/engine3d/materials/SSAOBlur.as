@@ -141,11 +141,10 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexBufferAt(program.aPosition, positionBuffer, quadGeometry._attributesOffsets[VertexAttributes.POSITION], VertexAttributes.FORMATS[VertexAttributes.POSITION]);
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
-//			var dw:Number = 1/width;
-//			var dh:Number = 1/height;
-			var dw:Number = 0;
-			var dh:Number = 0;
-			drawUnit.setVertexConstantsFromNumbers(program.cCenterOffset, dw, dh, 0, 0);
+			var dw:Number = 1/width;
+			var dh:Number = 1/height;
+//			drawUnit.setVertexConstantsFromNumbers(program.cCenterOffset, dw, dh, 0, 0);
+			drawUnit.setVertexConstantsFromNumbers(program.cCenterOffset, -dw, -dh, 0, 0);
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffsets0, dw, -dh, -dw, -dh);
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffsets1, dw, dh, -dw, dh);
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 0, 0);
