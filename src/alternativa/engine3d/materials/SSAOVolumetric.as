@@ -40,8 +40,8 @@ package alternativa.engine3d.materials {
 		public var width:int = 1024;
 		public var height:int = 1024;
 		public var offset:int = 6;
-		public var bias:Number = 0.1;
-		public var intensity:Number = 0.9;
+		public var bias:Number = 0;
+		public var intensity:Number = 1;
 		public var multiplier:Number = 1;
 		public var maxR:Number = 5;
 		public var threshold:Number = 10;
