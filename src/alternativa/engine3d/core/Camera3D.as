@@ -474,7 +474,11 @@ public class Camera3D extends Object3D {
 					rect.height = view._height;
 					context3D.setScissorRectangle(rect);
 					context3D.setRenderToTexture(depthTexture, true, 0, 0);
-					context3D.clear(1, 0);
+					if (encDepthMaterial.useNormals) {
+						context3D.clear(1, 0, 1, 1);
+					} else {
+						context3D.clear(1, 0);
+					}
 					depthRenderer.render(context3D);
 
 					var visibleTexture:Texture = depthTexture;

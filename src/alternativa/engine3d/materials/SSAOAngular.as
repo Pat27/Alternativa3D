@@ -39,6 +39,8 @@ package alternativa.engine3d.materials {
 		public var size:Number = 1;
 		public var angleBias:Number = 0;
 		public var intensity:Number = 1;
+		public var maxDistance:Number = 10;
+		public var falloff:Number = 0;
 
 		public function SSAOAngular() {
 			quadGeometry = new Geometry();
@@ -75,7 +77,7 @@ package alternativa.engine3d.materials {
 				"#c2=cOffset1",
 				"#c3=cConstants",	// radius, intensity/numSamples, bias, 1
 				"#c4=cUnproject1",	// uToViewX, uToViewY, width/2, height/2
-				"#c5=cUnproject2",	// nearClipping, focalLength
+				"#c5=cUnproject2",	// nearClipping, focalLength, max_distance, falloff
 				"#s0=sDepth",
 				"#s1=sRotation",
 				// unpack depth
@@ -110,7 +112,7 @@ package alternativa.engine3d.materials {
 				"tex t2, v0.zw, s1 <2d, repeat, nearest, mipnone>",
 				"add t2, t2, t2",
 				"sub t2, t2, c3.w",
-				"mov t2.z, c5.z",
+				"mov t2.z, c0.w",
 			];
 			// t0 - position
 			// t0.w - radius
@@ -153,18 +155,25 @@ package alternativa.engine3d.materials {
 				ssao[int(line++)] = "dp3 t3.x, t3, t1";
 				ssao[int(line++)] = "div t3.x, t3.x, t3.w";
 				ssao[int(line++)] = "sub t3.x, t3.x, c3.z";
-				ssao[int(line++)] = "max t3.x, t3.x, c5.z";
-				ssao[int(line++)] = "add t3.w, t3.w, c3.w";
-				ssao[int(line++)] = "div t3.w, t3.x, t3.w";
+				ssao[int(line++)] = "max t3.x, t3.x, c0.w";
+
+//				ssao[int(line++)] = "add t3.w, t3.w, c3.w";
+//				ssao[int(line++)] = "div t3.w, t3.x, t3.w";
+
+				ssao[int(line++)] = "sub t3.w, t3.w, c5.z";
+				ssao[int(line++)] = "mul t3.w, t3.w, c5.w";
+				ssao[int(line++)] = "sat t3.w, t3.w";
+				ssao[int(line++)] = "sub t3.w, c3.w, t3.w";
+				ssao[int(line++)] = "mul t3.w, t3.w, t3.x";
 
 				// rotate to second vector 45*
 				// calc second occlusion
 
 				// calculate occlusion sum
 				if (i == 0) {
-					ssao[int(line++)] = "mov t5, t3";
+					ssao[int(line++)] = "mov t5, t3.w";
 				} else {
-					ssao[int(line++)] = "add t5, t5, t3";
+					ssao[int(line++)] = "add t5, t5, t3.w";
 				}
 			}
 
@@ -278,9 +287,9 @@ package alternativa.engine3d.materials {
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, distance, distance/255, 0, 0);
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffset0, 0, -1, 0, 1);
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffset1, 1, 0, -1, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, size, intensity/1, angleBias, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, size, intensity/4, angleBias, 1);
 			drawUnit.setFragmentConstantsFromNumbers(program.cUnproject1, uToViewX, vToViewY, camera.view._width/2, camera.view._height/2);
-			drawUnit.setFragmentConstantsFromNumbers(program.cUnproject2, camera.nearClipping, camera.focalLength, 0, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cUnproject2, camera.nearClipping, camera.focalLength, maxDistance, 1/(falloff + 0.00001));
 			drawUnit.setTextureAt(program.sDepth, depthNormalsTexture);
 			drawUnit.setTextureAt(program.sRotation, rotationTexture);
 			// Send to render
