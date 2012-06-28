@@ -37,6 +37,7 @@ package alternativa.engine3d.materials {
 		public var height:Number = 0;
 
 		public var size:Number = 1;
+		public var angleBias:Number = 0;
 		public var intensity:Number = 1;
 
 		public function SSAOAngular() {
@@ -66,24 +67,20 @@ package alternativa.engine3d.materials {
 			var line:int;
 			var ssao:Array;
 
-			function doOcclusion():void {
-
-			}
-
 			// TODO: Order constants for better caching
 			ssao = [
 				"#v0=vUV",
 				"#c0=cDecDepth",
 				"#c1=cOffset0",
-//				"#c2=cOffset1",
-				"#c3=cConstants",	// radius, intensity, 0, 1
+				"#c2=cOffset1",
+				"#c3=cConstants",	// radius, intensity/numSamples, bias, 1
 				"#c4=cUnproject1",	// uToViewX, uToViewY, width/2, height/2
 				"#c5=cUnproject2",	// nearClipping, focalLength
 				"#s0=sDepth",
 				"#s1=sRotation",
 				// unpack depth
-				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t0.z, t0, c0",
+				"tex t1, v0, s0 <2d, clamp, nearest, mipnone>",
+				"dp3 t0.z, t1, c0",
 				// get 3D position
 				// z = d + near
 				"add t0.z, t0.z, c5.x",
@@ -97,6 +94,14 @@ package alternativa.engine3d.materials {
 				"div t0.xy, t0.xy, c5.y",
 
 				// unpack normal
+				"add t1.xy, t1.zwzw, t1.zwzw",
+				"sub t1.xy, t1.xy, c3.w",
+				"mul t1.zw, t1.xyxy, t1.xyxy",
+				"add t1.z, t1.z, t1.w",
+				"sub t1.z, c3.w, t1.z",
+				"sqt t1.z, t1.z",
+				// negative z
+				"neg t1.z, t1.z",
 
 				// calculate radius
 				"div t0.w, c3.x, t0.z",
@@ -105,7 +110,7 @@ package alternativa.engine3d.materials {
 				"tex t2, v0.zw, s1 <2d, repeat, nearest, mipnone>",
 				"add t2, t2, t2",
 				"sub t2, t2, c3.w",
-				"mov t2.z, c3.z",
+				"mov t2.z, c5.z",
 			];
 			// t0 - position
 			// t0.w - radius
@@ -115,7 +120,7 @@ package alternativa.engine3d.materials {
 			// Do iterations
 			const components:Array = [".x", ".y", ".z", ".w"];
 			line = ssao.length;
-			for (var i:int = 0; i < 2; i++) {
+			for (var i:int = 0; i < 4; i++) {
 				// reflect and scale vector
 				if ((i & 1) == 0) {
 					ssao[int(line++)] = "mul t3, c" + (i/2 + 1) + ", t0.w";
@@ -144,16 +149,22 @@ package alternativa.engine3d.materials {
 				ssao[int(line++)] = "dp3 t3.w, t3, t3";
 				ssao[int(line++)] = "sqt t3.w, t3.w";
 
-				// calculate occlusion
+				// calculate occlusion = (max(0, dot(normal, direction)/len(direction)) - bias)/(1 + distance)
+				ssao[int(line++)] = "dp3 t3.x, t3, t1";
+				ssao[int(line++)] = "div t3.x, t3.x, t3.w";
+				ssao[int(line++)] = "sub t3.x, t3.x, c3.z";
+				ssao[int(line++)] = "max t3.x, t3.x, c5.z";
+				ssao[int(line++)] = "add t3.w, t3.w, c3.w";
+				ssao[int(line++)] = "div t3.w, t3.x, t3.w";
 
 				// rotate to second vector 45*
 				// calc second occlusion
 
 				// calculate occlusion sum
 				if (i == 0) {
-					ssao[int(line++)] = "mov t5.x, t3.w";
+					ssao[int(line++)] = "mov t5, t3";
 				} else {
-					ssao[int(line++)] = "add t5.x, t5.x, t3.w";
+					ssao[int(line++)] = "add t5, t5, t3";
 				}
 			}
 
@@ -167,7 +178,10 @@ package alternativa.engine3d.materials {
 //			ssao[int(line++)] =	"add t4.x, t4.x, t4.w";
 //			ssao[int(line++)] =	"mul t4.x, t4.x, c6.w";
 //			ssao[int(line++)] =	"pow t4.x, t4.x, c9.z";
-			ssao[int(line++)] =	"mul o0, t5.x, c3.y";
+
+			ssao[int(line++)] =	"mul t5.x, t5.x, c3.y";
+			ssao[int(line++)] =	"sub o0, c3.w, t5.x";
+//			ssao[int(line++)] =	"mul o0, t5.x, c3.y";
 
 			var ssaoProcedure:Procedure = new Procedure(ssao, "SSAOProcedure");
 			fragmentLinker.addProcedure(ssaoProcedure);
@@ -263,7 +277,8 @@ package alternativa.engine3d.materials {
 			const distance:Number = camera.farClipping - camera.nearClipping;
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, distance, distance/255, 0, 0);
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffset0, 0, -1, 0, 1);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, size, intensity, 0, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cOffset1, 1, 0, -1, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, size, intensity/1, angleBias, 1);
 			drawUnit.setFragmentConstantsFromNumbers(program.cUnproject1, uToViewX, vToViewY, camera.view._width/2, camera.view._height/2);
 			drawUnit.setFragmentConstantsFromNumbers(program.cUnproject2, camera.nearClipping, camera.focalLength, 0, 0);
 			drawUnit.setTextureAt(program.sDepth, depthNormalsTexture);
@@ -287,6 +302,7 @@ class SSAOAngularProgram extends ShaderProgram {
 	public var cScale:int = -1;
 	public var cDecDepth:int = -1;
 	public var cOffset0:int = -1;
+	public var cOffset1:int = -1;
 	public var cConstants:int = -1;
 	public var cUnproject1:int = -1;
 	public var cUnproject2:int = -1;
@@ -305,6 +321,7 @@ class SSAOAngularProgram extends ShaderProgram {
 		cScale = vertexShader.findVariable("cScale");
 		cDecDepth = fragmentShader.findVariable("cDecDepth");
 		cOffset0 = fragmentShader.findVariable("cOffset0");
+		cOffset1 = fragmentShader.findVariable("cOffset1");
 		cConstants = fragmentShader.findVariable("cConstants");
 		cUnproject1 = fragmentShader.findVariable("cUnproject1");
 		cUnproject2 = fragmentShader.findVariable("cUnproject2");

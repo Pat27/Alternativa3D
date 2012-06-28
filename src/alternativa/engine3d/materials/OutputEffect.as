@@ -102,7 +102,7 @@ package alternativa.engine3d.materials {
 					"add t0.w, t0.x, t0.y",
 					"sub t0.w, c0.x, t0.w",
 					"sqt i0.z, t0.w",
-					"mov i0.xyw, c0.z",
+					"mov i0.w, c0.z",
 					"mov o0, i0"
 				], "NormalsProcedure"), "tOutput");
 			}
