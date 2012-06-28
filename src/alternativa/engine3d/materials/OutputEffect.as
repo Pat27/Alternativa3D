@@ -17,7 +17,7 @@ package alternativa.engine3d.materials {
 	import flash.utils.Dictionary;
 
 	use namespace alternativa3d;
-	public class DecodeDepthEffect {
+	public class OutputEffect {
 
 		private static var caches:Dictionary = new Dictionary(true);
 		private var cachedContext3D:Context3D;
@@ -30,10 +30,14 @@ package alternativa.engine3d.materials {
 		public var scaleX:Number = 1;
 		public var scaleY:Number = 1;
 
+		// 0 - raw
+		// 1 - depth
+		// 2 - depth encoded
+		// 3 - normals
+		public var mode:int = 0;
 		public var multiplyBlend:Boolean = false;
-		public var encodeEnabled:Boolean = false;
 
-		public function DecodeDepthEffect() {
+		public function OutputEffect() {
 			quadGeometry = new Geometry();
 			quadGeometry.addVertexStream([VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.TEXCOORDS[0], VertexAttributes.TEXCOORDS[0]]);
 			quadGeometry.numVertices = 4;
@@ -43,7 +47,7 @@ package alternativa.engine3d.materials {
 			quadGeometry._indices = Vector.<uint>([0, 3, 2, 0, 2, 1]);
 		}
 
-		private function setupProgram(encodeEnabled:Boolean):DepthMaterialProgram {
+		private function setupProgram(mode:int):DepthMaterialProgram {
 			// project vector in camera
 			var vertexLinker:Linker = new Linker(Context3DProgramType.VERTEX);
 			vertexLinker.addProcedure(new Procedure([
@@ -57,19 +61,25 @@ package alternativa.engine3d.materials {
 
 			var fragmentLinker:Linker = new Linker(Context3DProgramType.FRAGMENT);
 
-			var outputProcedure:Procedure = new Procedure([
+			var outputProcedure:Procedure;
+			outputProcedure = new Procedure([
 				"#v0=vUV",
 				"#s0=sTexture",
-//				"#c0=cConstants",
-//				"frc t0.y, v0.z",
-//				"sub t0.x, v0.z, t0.y",
-//				"mul t0.x, t0.x, c0.x",
 				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
 				"mov o0, t0"
 			], "DepthFragment");
 			fragmentLinker.addProcedure(outputProcedure);
 
-			if (encodeEnabled) {
+			if (mode == 1) {
+				fragmentLinker.declareVariable("tOutput");
+				fragmentLinker.setOutputParams(outputProcedure, "tOutput");
+				fragmentLinker.addProcedure(new Procedure([
+					"#c0=cConstants",
+					"mov i0.zw, c0.z",
+					"mov o0, i0"
+				], "DepthProcedure"), "tOutput");
+			}
+			if (mode == 2) {
 				fragmentLinker.declareVariable("tOutput");
 				fragmentLinker.setOutputParams(outputProcedure, "tOutput");
 				fragmentLinker.addProcedure(new Procedure([
@@ -77,6 +87,24 @@ package alternativa.engine3d.materials {
 					"dp3 t0, i0, c0",
 					"mov o0, t0"
 				], "EncodeProcedure"), "tOutput");
+			}
+			if (mode == 3) {
+				// encode normal
+				fragmentLinker.declareVariable("tOutput");
+				fragmentLinker.setOutputParams(outputProcedure, "tOutput");
+				fragmentLinker.addProcedure(new Procedure([
+					"#c0=cConstants",
+					"add i0.xy, i0.zw, i0.zw",
+					// doubled and sub 1
+					"sub i0.xy, i0.xy, c0.x",
+					// restore z = Math.sqrt(1 - x*x - y*y)
+					"mul t0.xy, i0.xy, i0.xy",
+					"add t0.w, t0.x, t0.y",
+					"sub t0.w, c0.x, t0.w",
+					"sqt i0.z, t0.w",
+					"mov i0.xyw, c0.z",
+					"mov o0, i0"
+				], "NormalsProcedure"), "tOutput");
 			}
 
 			fragmentLinker.varyings = vertexLinker.varyings;
@@ -94,10 +122,10 @@ package alternativa.engine3d.materials {
 				quadGeometry.upload(camera.context3D);
 				if (programsCache == null) {
 					programsCache = new Vector.<DepthMaterialProgram>(2);
-					programsCache[0] = setupProgram(false);
-					programsCache[0].upload(camera.context3D);
-					programsCache[1] = setupProgram(true);
-					programsCache[1].upload(camera.context3D);
+					for (var i:int = 0; i < 4; i++) {
+						programsCache[i] = setupProgram(i);
+						programsCache[i].upload(camera.context3D);
+					}
 					caches[cachedContext3D] = programsCache;
 				}
 			}
@@ -105,7 +133,7 @@ package alternativa.engine3d.materials {
 			var positionBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.POSITION);
 			var uvBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.TEXCOORDS[0]);
 
-			var program:DepthMaterialProgram = (encodeEnabled) ? programsCache[1] : programsCache[0];
+			var program:DepthMaterialProgram = programsCache[mode];
 			// Drawcall
 			var drawUnit:DrawUnit = camera.renderer.createDrawUnit(null, program.program, quadGeometry._indexBuffer, 0, 2, program);
 			// Streams
@@ -113,7 +141,7 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
 			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, 0);
-			if (program.cConstants >= 0) drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 1, 1/255, 0);
+			if (program.cConstants >= 0) drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 1, 1/255, 0, 0);
 			drawUnit.setTextureAt(program.sTexture, depthTexture);
 			// Send to render
 			if (multiplyBlend) {
