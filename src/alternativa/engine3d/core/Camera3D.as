@@ -523,7 +523,17 @@ public class Camera3D extends Object3D {
 						ssaoVolumetricEffect.collectQuadDraw(this);
 						renderer.render(context3D);
 
-						visibleTexture = ssaoTexture;
+						if (blurEnabled) {
+							context3D.setRenderToTexture(bluredSSAOTexture, true, 0, 0);
+							context3D.clear(0, 0);
+							ssaoBlur.width = 1 << effectTextureLog2Width;
+							ssaoBlur.height = 1 << effectTextureLog2Height;
+							ssaoBlur.depthTexture = depthTexture;
+							ssaoBlur.ssaoTexture = ssaoTexture;
+							ssaoBlur.collectQuadDraw(this);
+							renderer.render(context3D);
+						}
+						visibleTexture = blurEnabled ? bluredSSAOTexture : ssaoTexture;
 						multiplyEnabled = effectMode == 7;
 					}
 					if (effectMode == 8 || effectMode == 9) {
@@ -542,18 +552,17 @@ public class Camera3D extends Object3D {
 						ssaoAngular.collectQuadDraw(this);
 						renderer.render(context3D);
 
-//						if (blurEnabled) {
-//							context3D.setRenderToTexture(bluredSSAOTexture, true, 0, 0);
-//							context3D.clear(0, 0);
-//							ssaoBlur.width = 1 << effectTextureLog2Width;
-//							ssaoBlur.height = 1 << effectTextureLog2Height;
-//							ssaoBlur.depthTexture = depthTexture;
-//							ssaoBlur.ssaoTexture = ssaoTexture;
-//							ssaoBlur.collectQuadDraw(this);
-//							renderer.render(context3D);
-//						}
-//						visibleTexture = blurEnabled ? bluredSSAOTexture : ssaoTexture;
-						visibleTexture = ssaoTexture;
+						if (blurEnabled) {
+							context3D.setRenderToTexture(bluredSSAOTexture, true, 0, 0);
+							context3D.clear(0, 0);
+							ssaoBlur.width = 1 << effectTextureLog2Width;
+							ssaoBlur.height = 1 << effectTextureLog2Height;
+							ssaoBlur.depthTexture = depthTexture;
+							ssaoBlur.ssaoTexture = ssaoTexture;
+							ssaoBlur.collectQuadDraw(this);
+							renderer.render(context3D);
+						}
+						visibleTexture = blurEnabled ? bluredSSAOTexture : ssaoTexture;
 						multiplyEnabled = effectMode == 9;
 					}
 					// render quad to screen
