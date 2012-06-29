@@ -464,6 +464,7 @@ public class Camera3D extends Object3D {
 				// Render
 				renderer.render(context3D);
 
+				// TODO: separate render to texture and in backbuffer in two stages
 				// TODO: toggle off z-buffer
 				// TODO: toggle off culling
 				if (effectMode > 0) {

@@ -37,7 +37,7 @@ package alternativa.engine3d.materials {
 		public var height:Number = 0;
 
 		public var size:Number = 1;
-		public var angleBias:Number = 0;
+		public var angleBias:Number = 0.1;
 		public var intensity:Number = 1;
 		public var maxDistance:Number = 10;
 		public var falloff:Number = 0;
@@ -60,6 +60,7 @@ package alternativa.engine3d.materials {
 			// TODO: try to decode normal from depth
 			// TODO: add more samples
 			// TODO: fix normals at extremal camera angles (negative from camera direction)
+			// TODO: render with reduced textures sizes
 
 			// project vector in camera
 			var vertexLinker:Linker = new Linker(Context3DProgramType.VERTEX);
