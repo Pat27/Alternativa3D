@@ -53,6 +53,14 @@ package alternativa.engine3d.materials {
 		}
 
 		private function setupProgram():SSAOAngularProgram {
+			// TODO: order constants for better caching
+			// TODO: quadratic falloff
+			// TODO: improved random texture
+			// TODO: optimize shader
+			// TODO: try to decode normal from depth
+			// TODO: add more samples
+			// TODO: fix normals at extremal camera angles (negative from camera direction)
+
 			// project vector in camera
 			var vertexLinker:Linker = new Linker(Context3DProgramType.VERTEX);
 			vertexLinker.addProcedure(new Procedure([
@@ -69,7 +77,6 @@ package alternativa.engine3d.materials {
 			var line:int;
 			var ssao:Array;
 
-			// TODO: Order constants for better caching
 			ssao = [
 				"#v0=vUV",
 				"#c0=cDecDepth",

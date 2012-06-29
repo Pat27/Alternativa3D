@@ -71,7 +71,7 @@ package alternativa.engine3d.materials {
 			vertexLinker.addProcedure(vertexProcedure, "tProjected");
 
 			var fragmentLinker:Linker = new Linker(Context3DProgramType.FRAGMENT);
-			fragmentLinker.addProcedure(new Procedure([
+			var outputProcedure:Procedure = new Procedure([
 				"#v0=vDistance",
 				"#c0=cConstants",
 				"frc t0.y, v0.z",
@@ -79,12 +79,14 @@ package alternativa.engine3d.materials {
 				"mul t0.x, t0.x, c0.x",
 				"mov t0.zw, c0.zwzw",
 				"mov o0, t0"
-			], "DepthFragment"));
+			], "DepthFragment");
+			fragmentLinker.addProcedure(outputProcedure);
 
 			if (useNormals) {
 				// Transform normal in camera
 				// Multiply by transpose(invert(object->camera))
 				fragmentLinker.declareVariable("tColor");
+				fragmentLinker.setOutputParams(outputProcedure, "tColor");
 				fragmentLinker.addProcedure(new Procedure([
 					"#v0=vNormal",
 					"#c0=cTransformRow1",	// .w = 0.5
