@@ -30,7 +30,7 @@ package alternativa.engine3d.materials {
 		public var width:Number = 0;
 		public var height:Number = 0;
 
-		public var size:int = 3;
+		public var size:int = 4;
 		public var offset:int = 1;
 
 
@@ -87,23 +87,38 @@ package alternativa.engine3d.materials {
 			// t2.y - depth of current point
 			// t3 - sum
 
+//			// calculate first offset coords
+//			blurCode[int(line++)] = "mov t0, v0";
+//			for (i = 0; i < size; i++){
+//				blurCode[int(line++)] = "add t0.xy, t0.xy, c0.zw";
+//			}
+//
+//			// calculate offsets
+//			for (j = 0; j < size * 2 + 1; j++){
+//				calculateSample();
+//				for (i = 0; i < size * 2; i++){
+//					blurCode[int(line++)] = ((j&1) == 0) ? "add t0.x, t0.x, c0.x" : "add t0.x, t0.x, c0.z";
+//					calculateSample();
+//				}
+//				if (j < size * 2) blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
+//			}
+
+
 			// calculate first offset coords
 			blurCode[int(line++)] = "mov t0, v0";
-			for (i = 0; i < size; i++){
+			for (i = 0; i < size / 2 - 1; i++){
 				blurCode[int(line++)] = "add t0.xy, t0.xy, c0.zw";
 			}
 
 			// calculate offsets
-			for (j = 0; j < size * 2 + 1; j++){
+			for (j = 0; j < size - 1; j++){
 				calculateSample();
-				for (i = 0; i < size * 2; i++){
+				for (i = 0; i < size; i++){
 					blurCode[int(line++)] = ((j&1) == 0) ? "add t0.x, t0.x, c0.x" : "add t0.x, t0.x, c0.z";
 					calculateSample();
 				}
-				if (j < size * 2) blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
+				if (j < size - 1) blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
 			}
-
-//			calculateSample();
 
 
 			function calculateSample():void{
@@ -152,7 +167,8 @@ package alternativa.engine3d.materials {
 			// Constants
 			var dw:Number = offset/width;
 			var dh:Number = offset/height;
-			var segmentCount:int = (size*2+1)*(size*2+1);
+//			var segmentCount:int = (size*2+1)*(size*2+1);
+			var segmentCount:int = size*size;
 			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, dw, dh, -dw, -dh);
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 0, 0);
 			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, segmentCount, 1, 0, 0);
