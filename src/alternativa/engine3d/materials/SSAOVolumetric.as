@@ -233,7 +233,7 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, 0);
 
 			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, camLength, camLength/255, 0, threshold);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset/width, offset/height, -offset/width, -offset/height);
+			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, offset*camLength/width, offset*camLength/height, -offset*camLength/width, -offset*camLength/height);
 			drawUnit.setFragmentConstantsFromNumbers(program.cCoeff,  maxR, intensity, 1/9, 1);
 			drawUnit.setFragmentConstantsFromNumbers(program.cBias,   bias, multiplier, 0, 0);
 
