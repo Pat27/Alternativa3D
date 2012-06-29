@@ -27,17 +27,18 @@ package alternativa.engine3d.materials {
 
 		private var quadGeometry:Geometry;
 
-//		public var scaleX:Number = 1;
-//		public var scaleY:Number = 1;
 		public var width:Number = 0;
 		public var height:Number = 0;
+
+		public var size:int = 3;
+		public var offset:int = 1;
+
 
 		public function SSAOBlur() {
 			quadGeometry = new Geometry();
 			quadGeometry.addVertexStream([VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.POSITION, VertexAttributes.TEXCOORDS[0], VertexAttributes.TEXCOORDS[0]]);
 			quadGeometry.numVertices = 4;
 			quadGeometry.setAttributeValues(VertexAttributes.POSITION, Vector.<Number>([-1, 1, 0, 1, 1, 0, 1, -1, 0, -1, -1, 0]));
-			//quadGeometry.setAttributeValues(VertexAttributes.POSITION, Vector.<Number>([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]));
 			quadGeometry.setAttributeValues(VertexAttributes.TEXCOORDS[0], Vector.<Number>([0, 0, 1, 0, 1, 1, 0, 1]));
 			quadGeometry._indices = Vector.<uint>([0, 3, 2, 0, 2, 1]);
 		}
@@ -49,66 +50,74 @@ package alternativa.engine3d.materials {
 				"#a0=aPosition",
 				"#a1=aUV",
 				"#v0=vUV",
-				"#c0=cCenterOffset",
-				"add v0, a1, c0",
+
+				"mov v0, a1",
 				"mov o0, a0"
 			], "vertexProcedure"));
 
 			var fragmentLinker:Linker = new Linker(Context3DProgramType.FRAGMENT);
 
-			var line:int;
-			var blur:Array = [
+			var line:int = 0;
+			var i:int;
+			var j:int;
+			var blurCode:Array = [
 				"#v0=vUV",
 				"#s0=sDepth",
 				"#s1=sSSAO",
-				"#c0=cOffsets0",
-				"#c1=cOffsets1",
-				"#c2=cDecDepth",
-				"#c3=cConstants",	// 0.0125, 1, 8
-				"#c4=cWeightConst",	// 0.5, 0.75, 0.25
-				// calc center color and depth
-				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
-				"dp3 t0.w, t0, c2",
-				"tex t0.xyz, v0, s1 <2d, clamp, nearest, mipnone>",
-				// multiply by 0.0125
-				"mul t3.xyz, t0.xyz, c3.x",
-				"mov t3.w, c3.x"
+
+				"#c0=cOffset",		// dw, dh, -dw, -dh
+				"#c1=cDecDepth",	// 1, 1/255, 0, 0
+				"#c2=cConstants"	// segmentCount, 1, 0, 0
 			];
-			line = blur.length;
-			for (var i:int = 0; i < 4; i++) {
-				// scale offset
-				if ((i & 1) == 0) {
-					blur[int(line++)] = "add t1, v0.xyxy, c" + i/2;
-					blur[int(line++)] = "tex t2, t1.xy, s0 <2d, clamp, nearest, mipnone>";
-				} else {
-					blur[int(line++)] = "tex t2, t1.zw, s0 <2d, clamp, nearest, mipnone>";
-				}
-				// unpack depth
-				blur[int(line++)] = "dp3 t2.w, t2, c2";
-				// calc difference = 8*(1 - depth/center_depth)
-				blur[int(line++)] = "div t2.w, t2.w, t0.w";
-				blur[int(line++)] = "sub t2.w, c3.y, t2.w";
-				blur[int(line++)] = "mul t2.w, t2.w, c3.z";
-				// calc weight = sat(0.5 - (0.75*abs(diff) + 0.25*(diff)))
-				blur[int(line++)] = "abs t2.x, t2.w";
-				blur[int(line++)] = "mul t2.x, t2.x, c4.y";
-				blur[int(line++)] = "mul t2.y, t2.w, c4.z";
-				blur[int(line++)] = "add t2.z, t2.x, t2.y";
-				blur[int(line++)] = "sub t2.w, c4.x, t2.z";
-				// sample color
-				blur[int(line++)] = "tex t2.xyz, t1.xy, s1 <2d, clamp, nearest, mipnone>";
-				blur[int(line++)] = "mul t2.xyz, t2.xyz, t2.w";
-				// calc sum
-				blur[int(line++)] = "add t3, t3, t2";
+
+			// init
+			line = blurCode.length;
+			blurCode[int(line++)] = "mov t0, c0";
+			blurCode[int(line++)] = "mov t0, c1";
+			blurCode[int(line++)] = "mov t0, c2";
+			blurCode[int(line++)] = "tex t0, v0, s0 <2d, clamp, nearest, mipnone>";
+			blurCode[int(line++)] = "tex t0, v0, s1 <2d, clamp, nearest, mipnone>";
+			blurCode[int(line++)] = "mov t1, c1.w";
+			blurCode[int(line++)] = "mov t2, c1.w";
+
+
+			// t0 - sample coords
+			// t1 - texture value
+			// t2.x - depth of source point
+			// t2.y - depth of current point
+			// t3 - sum
+
+			// calculate first offset coords
+			blurCode[int(line++)] = "mov t0, v0";
+			for (i = 0; i < size; i++){
+				blurCode[int(line++)] = "add t0.xy, t0.xy, c0.zw";
 			}
+
+			// calculate offsets
+			for (j = 0; j < size * 2 + 1; j++){
+				calculateSample();
+				for (i = 0; i < size * 2; i++){
+					blurCode[int(line++)] = ((j&1) == 0) ? "add t0.x, t0.x, c0.x" : "add t0.x, t0.x, c0.z";
+					calculateSample();
+				}
+				if (j < size * 2) blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
+			}
+
+//			calculateSample();
+
+
+			function calculateSample():void{
+				blurCode[int(line++)] = "tex t1, t0.xy, s1 <2d, clamp, nearest, mipnone>";
+				blurCode[int(line++)] = "add t2, t2, t1";
+			}
+
 			// calc out color
-			blur[int(line++)] = "div o0, t3.x, t3.w";
+			blurCode[int(line++)] = "div t2, t2, c2.x";
+			blurCode[int(line++)] = "mov o0, t2";
 
-			trace(blur.join("\n"));
 
-			var ssaoProcedure:Procedure = new Procedure(blur, "SSAOBlur");
+			var ssaoProcedure:Procedure = new Procedure(blurCode, "SSAOBlur");
 			fragmentLinker.addProcedure(ssaoProcedure);
-
 			fragmentLinker.varyings = vertexLinker.varyings;
 			return new DepthMaterialProgram(vertexLinker, fragmentLinker);
 		}
@@ -133,25 +142,20 @@ package alternativa.engine3d.materials {
 			// Streams
 			var positionBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.POSITION);
 			var uvBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.TEXCOORDS[0]);
-
 			var program:DepthMaterialProgram = programsCache[0];
+
 			// Drawcall
 			var drawUnit:DrawUnit = camera.renderer.createDrawUnit(null, program.program, quadGeometry._indexBuffer, 0, 2, program);
 			// Streams
 			drawUnit.setVertexBufferAt(program.aPosition, positionBuffer, quadGeometry._attributesOffsets[VertexAttributes.POSITION], VertexAttributes.FORMATS[VertexAttributes.POSITION]);
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
-			var dw:Number = 1/width;
-			var dh:Number = 1/height;
-//			var dw:Number = 0;
-//			var dh:Number = 0;
-			drawUnit.setVertexConstantsFromNumbers(program.cCenterOffset, dw, dh, 0, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffsets0, dw, -dh, -dw, -dh);
-			drawUnit.setFragmentConstantsFromNumbers(program.cOffsets1, dw, dh, -dw, dh);
+			var dw:Number = offset/width;
+			var dh:Number = offset/height;
+			var segmentCount:int = (size*2+1)*(size*2+1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cOffset, dw, dh, -dw, -dh);
 			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 0, 0);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 0.0125, 1, 8);
-			drawUnit.setFragmentConstantsFromNumbers(program.cWeightConst, 0.5, 0.75, 0.25);
-//			drawUnit.setFragmentConstantsFromNumbers(program.cWeightConst, 0.5, 0, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, segmentCount, 1, 0, 0);
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
 			drawUnit.setTextureAt(program.sSSAO, ssaoTexture);
 			// Send to render
@@ -170,12 +174,9 @@ class DepthMaterialProgram extends ShaderProgram {
 
 	public var aPosition:int = -1;
 	public var aUV:int = -1;
-	public var cCenterOffset:int = -1;
-	public var cOffsets0:int = -1;
-	public var cOffsets1:int = -1;
+	public var cOffset:int = -1;
 	public var cDecDepth:int = -1;
 	public var cConstants:int = -1;
-	public var cWeightConst:int = -1;
 	public var sDepth:int = -1;
 	public var sSSAO:int = -1;
 
@@ -188,12 +189,11 @@ class DepthMaterialProgram extends ShaderProgram {
 
 		aPosition =  vertexShader.findVariable("aPosition");
 		aUV =  vertexShader.findVariable("aUV");
-		cCenterOffset = vertexShader.findVariable("cCenterOffset");
-		cOffsets0 = fragmentShader.findVariable("cOffsets0");
-		cOffsets1 = fragmentShader.findVariable("cOffsets1");
+
+		cOffset = fragmentShader.findVariable("cOffset");
 		cDecDepth = fragmentShader.findVariable("cDecDepth");
 		cConstants = fragmentShader.findVariable("cConstants");
-		cWeightConst = fragmentShader.findVariable("cWeightConst");
+
 		sDepth = fragmentShader.findVariable("sDepth");
 		sSSAO = fragmentShader.findVariable("sSSAO");
 	}

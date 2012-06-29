@@ -61,12 +61,6 @@ package alternativa.engine3d.materials {
 
 			var fragmentLinker:Linker = new Linker(Context3DProgramType.FRAGMENT);
 
-			// Sample center depth
-			// Sample neighbours depth nearest to our coordinate (delta)
-			// Compare center depth with each neighbour
-			// sample_vis = 1 - sat((center_depth - depth)/distance)
-			// result = sum(vis0, vis1, ...)/num_samples
-
 			var line:int;
 			var ssao:Array = [
 				"#v0=vUV",
@@ -78,7 +72,7 @@ package alternativa.engine3d.materials {
 				"#c5=cOffset4",		// .w = 64
 				"#c6=cOffset5",		// .w = 1/4
 				"#c7=cOffset6",		// .w = -0.075
-				"#c8=cOffset7",		// .w = 2
+				"#c8=cOffset7",		// .w = 2*scale
 				"#c9=cConstants",	// .x = -0.85*(far-near), 2, 0.55, 1
 				"#s0=sDepth",
 				"#s1=sRotation",
@@ -86,26 +80,28 @@ package alternativa.engine3d.materials {
 				"tex t0, v0, s0 <2d, clamp, nearest, mipnone>",
 				"dp3 t0.w, t0, c0",
 				// calculate world z = z*(far-near)
-				"mul t0.z, t0.w, c1.w",
-				// calculate scale: scale.xy = (z/4 + 2)/z
-//				"div t1, t0.z, c3.w",
-//				"add t1.xyz, t1.xyz, c2.w",
+//				"mul t0.z, t0.w, c1.w",
 
 				// scale = 2*sat(w_d/5.3)*(1 + w_d/8)
-				"div t1.x, t0.z, c2.w",
-				"sat t1.x, t1.x",
-				"div t1.y, t0.z, c3.w",
-				"add t1.y, t1.y, c9.w",
-				"mul t1.w, t1.x, t1.y",
-				"mul t1.xyz, t1.w, c8.w",
-
-				"div t1.xy, t1.xy, t0.z",
+//				"div t1.x, t0.w, c2.w",
+//				"sat t1.x, t1.x",
+//				"div t1.y, t0.w, c3.w",
+//				"add t1.y, t1.y, c9.w",
+//				"mul t1.w, t1.x, t1.y",
+//				"mul t1.xyz, t1.w, c8.w",
+//				"div t1.xyz, t1.xyz, t0.w",
 				// calc range_scale in t0.z = -0.85*(far - near)/scale.z
-				"div t0.z, c9.x, t1.z",
+//				"div t0.z, c9.x, t1.z",
 				// scale.z = 2*(z/4 + 2)/(far-near)
-				"mul t1.z, t1.z, c4.w",
+//				"mul t1.z, t1.z, c4.w",
 				// calculate diff_scale = 64/scale.z
-				"div t1.w, c5.w, t1.z",
+//				"div t1.w, c5.w, t1.z",
+
+//				"mov t1, c1",
+				"mov t1, c8.w",
+//				"div t1, c8.w, t0.w",
+				// z unchanged
+//				"mov t1.z, c9.w",
 				// sample mirror plane
 				"tex t5, v0.zw, s1 <2d, repeat, nearest, mipnone>",
 				"add t5, t5, t5",
@@ -122,7 +118,7 @@ package alternativa.engine3d.materials {
 			for (var pass:int = 0; pass < 2; pass++) {
 				for (var i:int = 0; i < 4; i++) {
 					// scale vector
-					ssao[int(line++)] = "mul t2, c" + (4*pass + i) + ", t1";
+					ssao[int(line++)] = "mul t2, c" + (4*pass + i + 1) + ", t1";
 					// mirror by plane t2 = t2 - 2*dp3(t2, t5)
 					ssao[int(line++)] = "dp3 t2.w, t2, t5";
 					ssao[int(line++)] = "add t2.w, t2.w, t2.w";
@@ -130,39 +126,68 @@ package alternativa.engine3d.materials {
 					// calc uv and sample
 					ssao[int(line++)] = "add t2.xy, v0.xy, t2.xy";
 					ssao[int(line++)] = "tex t2.xy, t2, s0 <2d, clamp, nearest, mipnone>";
+//					ssao[int(line++)] = "tex t2.xy, v0, s0 <2d, clamp, nearest, mipnone>";
+					// TODO: add threshold
 					// unpack and add t2.z
 					ssao[int(line++)] = "dp3 t3" + components[i] + ", t2, c0";
 				}
 				// diff = depths - center_z
 				ssao[int(line++)] = "sub t3, t3, t0.w";
-				// calc occlusion quality. q = (sat(abs(vDist*range_sc)) + sat(vDist*range_sc))/2
-				ssao[int(line++)] = "mul t6, t3, t0.z";
-				ssao[int(line++)] = "abs t7, t6";
-				ssao[int(line++)] = "sat t6, t6";
-				ssao[int(line++)] = "sat t7, t7";
-				ssao[int(line++)] = "add t6, t6, t7";
-				ssao[int(line++)] = "div t6, t6, c9.y";
+
+//				// calc occlusion quality. q = (sat(abs(vDist*range_sc)) + sat(vDist*range_sc))/2
+//				ssao[int(line++)] = "mul t6, t3, t0.z";
+//				ssao[int(line++)] = "abs t7, t6";
+//				ssao[int(line++)] = "sat t6, t6";
+//				ssao[int(line++)] = "sat t7, t7";
+//				ssao[int(line++)] = "add t6, t6, t7";
+//				ssao[int(line++)] = "div t6, t6, c9.y";
 				// mul by diff_scale
-				ssao[int(line++)] = "mul t3, t3, t1.w";
+//				ssao[int(line++)] = "mul t3, t3, t1.w";
+
+				// apply fallof by distance
+				ssao[int(line++)] = "mul t6, t3, c9.y";
+				ssao[int(line++)] = "sat t6, t6";
+				ssao[int(line++)] = "mul t3, t3, c9.x";
 				ssao[int(line++)] = "sat t3, t3";
-				// interpolate value by occlusion quality. t3 = 0.55*t6 + t3*(1 - t6)
-				ssao[int(line++)] = "mul t7, c9.z, t6";
-				ssao[int(line++)] = "sub t6, c9.w, t6";
-				ssao[int(line++)] = "mul t3, t3, t6";
+				ssao[int(line++)] = "add t3, t3, t6";
 				if (pass == 0) {
-					ssao[int(line++)] = "add t4, t3, t7";
+					ssao[int(line++)] = "sat t4, t3";
 				} else {
-					ssao[int(line++)] = "add t3, t3, t7";
-					ssao[int(line++)] = "add t4, t4, t3";
+					ssao[int(line++)] = "sat t7, t3";
+//					ssao[int(line++)] = "add t4, t4, t3";
+				}
+
+//				ssao[int(line++)] = "sat t3, t3";
+//				// interpolate value by occlusion quality. t3 = 0.55*t6 + t3*(1 - t6)
+//				ssao[int(line++)] = "mul t7, c9.z, t6";
+//				ssao[int(line++)] = "sub t6, c9.w, t6";
+//				ssao[int(line++)] = "mul t3, t3, t6";
+				if (pass == 0) {
+//					ssao[int(line++)] = "add t4, t3, t7";
+				} else {
+//					ssao[int(line++)] = "add t3, t3, t7";
+//					ssao[int(line++)] = "add t4, t4, t3";
 				}
 			}
 			// weighted sum and output
-			ssao[int(line++)] =	"dp4 t4.x, t4, c6.w";  	// 1/4
-			ssao[int(line++)] =	"add t4.x, t4.x, c7.w"; // -0.075
+//			ssao[int(line++)] =	"dp4 t4.x, t4, c6.w";  	// 1/4
+//			ssao[int(line++)] =	"add t4.x, t4.x, c7.w"; // -0.075
+
+			ssao[int(line++)] =	"add t4, t4, t7";
+			// TODO: fix dp4
+			ssao[int(line++)] =	"add t4.x, t4.x, t4.y";
+			ssao[int(line++)] =	"add t4.x, t4.x, t4.z";
+			ssao[int(line++)] =	"add t4.x, t4.x, t4.w";
+			ssao[int(line++)] =	"mul t4.x, t4.x, c6.w";
+			ssao[int(line++)] =	"pow t4.x, t4.x, c9.z";
 			ssao[int(line++)] =	"mov o0, t4.x";
+
+//			ssao[int(line++)] =	"mov o0, t4.x";
 
 			var ssaoProcedure:Procedure = new Procedure(ssao, "SSAOProcedure");
 			fragmentLinker.addProcedure(ssaoProcedure);
+
+			trace(A3DUtils.disassemble(ssaoProcedure.getByteCode(Context3DProgramType.FRAGMENT)));
 
 			fragmentLinker.varyings = vertexLinker.varyings;
 			return new DepthMaterialProgram(vertexLinker, fragmentLinker);
@@ -172,17 +197,47 @@ package alternativa.engine3d.materials {
 
 		private static function initOffsets():Vector.<Number> {
 			var result:Vector.<Number> = new Vector.<Number>(32);
-			for (var i:int = 0; i < 32; i+=4) {
-				var x:Number = (i == 0 || i >= 5*4) ? 1 : -1;
-				var y:Number = (i == 0 || i == 3*4 || i == 4*4 || i == 7*4) ? 1 : -1;
-				var z:Number = ((i/4) % 2 == 0) ? 1 : -1;
-//				var step:Number = (i/4 + 1)*(1 - 1/8);
-				var step:Number = 0.1;
-				var scale:Number = 0.025*step/Math.sqrt(x*x + y*y + z*z);
-				result[i] = scale*x;
-				result[i + 1] = scale*y;
-				result[i + 2] = scale*z;
+//			for (var i:int = 0; i < 32; i+=4) {
+//				var x:Number = (i == 0 || i >= 5*4) ? 1 : -1;
+//				var y:Number = (i == 0 || i == 3*4 || i == 4*4 || i == 7*4) ? 1 : -1;
+//				var z:Number = ((i/4) % 2 == 0) ? 1 : -1;
+////				var step:Number = (i/4 + 1)*(1 - 1/8);
+////				var scale:Number = 0.025*step/Math.sqrt(x*x + y*y + z*z);
+//				var scale:Number = 1/Math.sqrt(x*x + y*y + z*z);
+//				result[i] = scale*x;
+//				result[i + 1] = scale*y;
+//				result[i + 2] = scale*z;
+//			}
+
+			result[0] = 1;
+			result[1] = -1;
+//			result[2] = 1;
+			result[4] = -1;
+			result[5] = -1;
+//			result[6] = 1;
+			result[8] = 1;
+			result[9] = 1;
+//			result[10] = 1;
+			result[12] = -1;
+			result[13] = 1;
+//			result[14] = 1;
+			for (var i:int = 0; i < 4; i++) {
+				var index:int = int(4*i);
+				var x:Number = result[index];
+				var y:Number = result[int(index + 1)];
+//				var z:Number = result[int(index + 2)];
+				var z:Number = 1 + 0.001;
+				var invLen:Number = 1/Math.sqrt(x*x + y*y + z*z);
+				result[index] = x*invLen;
+				result[int(index + 1)] = y*invLen;
+				result[int(index + 2)] = z*invLen;
+				// bottom
+				index = index + 16;
+				result[index] = x*invLen;
+				result[int(index + 1)] = y*invLen;
+				result[int(index + 2)] = -z*invLen;
 			}
+
 			return result;
 		}
 
@@ -196,7 +251,8 @@ package alternativa.engine3d.materials {
 				programsCache = caches[cachedContext3D];
 				quadGeometry.upload(camera.context3D);
 
-				var bmd:BitmapData = new BitmapData(4, 4, false, 0x0);
+//				var bmd:BitmapData = new BitmapData(4, 4, false, 0x3653dd);
+				var bmd:BitmapData = new BitmapData(4, 4, false, 0x7F7F7F);
 				bmd.setPixel(0, 0, 0x967bfe);
 				bmd.setPixel(1, 0, 0x7f0361);
 				bmd.setPixel(2, 0, 0xa4f663);
@@ -223,7 +279,7 @@ package alternativa.engine3d.materials {
 					caches[cachedContext3D] = programsCache;
 				}
 			}
-			// Strams
+			// Streams
 			var positionBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.POSITION);
 			var uvBuffer:VertexBuffer3D = quadGeometry.getVertexBuffer(VertexAttributes.TEXCOORDS[0]);
 
@@ -235,21 +291,33 @@ package alternativa.engine3d.materials {
 			drawUnit.setVertexBufferAt(program.aUV, uvBuffer, quadGeometry._attributesOffsets[VertexAttributes.TEXCOORDS[0]], VertexAttributes.FORMATS[VertexAttributes.TEXCOORDS[0]]);
 			// Constants
 			drawUnit.setVertexConstantsFromNumbers(program.cScale, scaleX, scaleY, width*scaleX/4, height*scaleY/4);
-			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 1, 0);
 
-			const sc:Number = 2*size;
 			const dist:Number = camera.farClipping - camera.nearClipping;
 
-			offsets[3] = dist;
-			offsets[4 + 3] = 5.3;
-			offsets[8 + 3] = 8;
-			offsets[12 + 3] = 2/dist;
-			offsets[16 + 3] = 64;
+			//			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, 1, 1/255, 1, 0);
+			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, dist, dist/255, dist*0.5, 0);
+//			drawUnit.setFragmentConstantsFromNumbers(program.cDecDepth, dist, dist/255, -1, 0);
+
+//			const sc:Number = 2*size;
+//			offsets[3] = dist;
+//			offsets[4 + 3] = 0.1;
+//			offsets[8 + 3] = 4;
+//			offsets[12 + 3] = 2/dist;
+//			offsets[16 + 3] = 64;
+//			offsets[20 + 3] = 1/4;
+//			offsets[24 + 3] = -0.075;
+//			offsets[28 + 3] = sc;
+
 			offsets[20 + 3] = 1/4;
-			offsets[24 + 3] = -0.075;
-			offsets[28 + 3] = sc;
+//			offsets[24 + 3] = 0.5;
+			offsets[24 + 3] = 0;
+			offsets[28 + 3] = size;
+//			offsets[28 + 3] = dist*size;
+
 			drawUnit.setFragmentConstantsFromVector(program.cOffset0, offsets, 8);
-			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, -0.85*dist*softness, 2, 0.55, 1);
+//			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, -0.85*dist*softness, 2, 0.55, 1);
+//			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 65000, -1/(100*softness), 0.55, 1);
+			drawUnit.setFragmentConstantsFromNumbers(program.cConstants, 65000, -1/(100*softness), 100, 1);
 			drawUnit.setTextureAt(program.sDepth, depthTexture);
 			drawUnit.setTextureAt(program.sRotation, rotationTexture);
 			// Send to render
