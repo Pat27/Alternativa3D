@@ -111,13 +111,16 @@ package alternativa.engine3d.materials {
 			}
 
 			// calculate offsets
-			for (j = 0; j < size - 1; j++){
+			for (j = 0; j < size; j++){
 				calculateSample();
-				for (i = 0; i < size; i++){
-					blurCode[int(line++)] = ((j&1) == 0) ? "add t0.x, t0.x, c0.x" : "add t0.x, t0.x, c0.z";
+				for (i = 0; i < size-1; i++){
+					blurCode[int(line++)] = ((j&1) == 0) ?
+							"add t0.x, t0.x, c0.x" :
+							"add t0.x, t0.x, c0.z";
 					calculateSample();
 				}
-				if (j < size - 1) blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
+				if (j < size - 1)
+					blurCode[int(line++)] = "add t0.y, t0.y, c0.y";
 			}
 
 
