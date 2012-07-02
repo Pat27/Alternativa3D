@@ -201,9 +201,6 @@ public class Camera3D extends Object3D {
 	public var effectMode:int = 0;
 	public var blurEnabled:Boolean = true;
 
-	public var ssaoSize:Number = 1;
-	public var ssaoSoftness:Number = 1;
-
 	/**
 	 * @private
 	 */
@@ -492,8 +489,6 @@ public class Camera3D extends Object3D {
 						ssaoEffect.scaleY = 1;
 						ssaoEffect.width = 1 << effectTextureLog2Width;
 						ssaoEffect.height = 1 << effectTextureLog2Height;
-						ssaoEffect.size = ssaoSize;
-						ssaoEffect.softness = ssaoSoftness;
 						ssaoEffect.depthTexture = depthTexture;
 						ssaoEffect.collectQuadDraw(this);
 						renderer.render(context3D);
@@ -546,8 +541,6 @@ public class Camera3D extends Object3D {
 						ssaoAngular.height = 1 << effectTextureLog2Height;
 						ssaoAngular.uToViewX = view._width/encDepthMaterial.outputScaleX;
 						ssaoAngular.vToViewY = view._height/encDepthMaterial.outputScaleY;
-						ssaoAngular.size = ssaoSize;
-						ssaoAngular.intensity = ssaoSoftness;
 						ssaoAngular.depthNormalsTexture = depthTexture;
 						ssaoAngular.collectQuadDraw(this);
 						renderer.render(context3D);

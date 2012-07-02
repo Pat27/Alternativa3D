@@ -56,6 +56,7 @@ package alternativa.engine3d.materials {
 			// TODO: order constants for better caching
 			// TODO: quadratic falloff
 			// TODO: improved random texture
+			// TODO: use 2D rotation matrix for random texture (mul o0 t0.xyxy c0; add o0.xy o0.xz o0.yw)
 			// TODO: optimize shader
 			// TODO: try to decode normal from depth
 			// TODO: add more samples
@@ -203,7 +204,7 @@ package alternativa.engine3d.materials {
 			var ssaoProcedure:Procedure = new Procedure(ssao, "SSAOProcedure");
 			fragmentLinker.addProcedure(ssaoProcedure);
 
-			trace(A3DUtils.disassemble(ssaoProcedure.getByteCode(Context3DProgramType.FRAGMENT)));
+//			trace(A3DUtils.disassemble(ssaoProcedure.getByteCode(Context3DProgramType.FRAGMENT)));
 
 			fragmentLinker.varyings = vertexLinker.varyings;
 			return new SSAOAngularProgram(vertexLinker, fragmentLinker);
