@@ -8,38 +8,38 @@
 
 package alternativa.engine3d.core {
 
-	import alternativa.engine3d.alternativa3d;
-	import alternativa.engine3d.materials.EncodeDepthMaterial;
-	import alternativa.engine3d.materials.OutputEffect;
-	import alternativa.engine3d.materials.SSAOAngular;
-	import alternativa.engine3d.materials.SSAOBlur;
-	import alternativa.engine3d.materials.SSAOEffect;
-	import alternativa.engine3d.materials.SSAOVolumetric;
+import alternativa.engine3d.alternativa3d;
+import alternativa.engine3d.materials.EncodeDepthMaterial;
+import alternativa.engine3d.materials.OutputEffect;
+import alternativa.engine3d.materials.SSAOAngular;
+import alternativa.engine3d.materials.SSAOBlur;
+import alternativa.engine3d.materials.SSAOEffect;
+import alternativa.engine3d.materials.SSAOVolumetric;
 
-	import flash.display.Bitmap;
-	import flash.display.BitmapData;
-	import flash.display.DisplayObject;
-	import flash.display.Sprite;
-	import flash.display.Stage3D;
-	import flash.display.StageAlign;
-	import flash.display3D.Context3D;
-	import flash.display3D.Context3DTextureFormat;
-	import flash.display3D.textures.Texture;
-	import flash.events.Event;
-	import flash.geom.Point;
-	import flash.geom.Rectangle;
-	import flash.geom.Vector3D;
-	import flash.system.System;
-	import flash.text.TextField;
-	import flash.text.TextFieldAutoSize;
-	import flash.text.TextFormat;
-	import flash.utils.Dictionary;
-	import flash.utils.getDefinitionByName;
-	import flash.utils.getQualifiedClassName;
-	import flash.utils.getQualifiedSuperclassName;
-	import flash.utils.getTimer;
+import flash.display.Bitmap;
+import flash.display.BitmapData;
+import flash.display.DisplayObject;
+import flash.display.Sprite;
+import flash.display.Stage3D;
+import flash.display.StageAlign;
+import flash.display3D.Context3D;
+import flash.display3D.Context3DTextureFormat;
+import flash.display3D.textures.Texture;
+import flash.events.Event;
+import flash.geom.Point;
+import flash.geom.Rectangle;
+import flash.geom.Vector3D;
+import flash.system.System;
+import flash.text.TextField;
+import flash.text.TextFieldAutoSize;
+import flash.text.TextFormat;
+import flash.utils.Dictionary;
+import flash.utils.getDefinitionByName;
+import flash.utils.getQualifiedClassName;
+import flash.utils.getQualifiedSuperclassName;
+import flash.utils.getTimer;
 
-	use namespace alternativa3d;
+use namespace alternativa3d;
 
 /**
  *
@@ -200,6 +200,7 @@ public class Camera3D extends Object3D {
 	// 9 - color + ssao 3
 	public var effectMode:int = 0;
 	public var blurEnabled:Boolean = true;
+	public var effectRate:int = 1;
 
 	/**
 	 * @private
@@ -263,8 +264,8 @@ public class Camera3D extends Object3D {
 			view.prepareToRender(stage3D, context3D);
 			if (effectMode > 0) {
 				// update depth texture
-				var log2Width:int = Math.ceil(Math.log(view._width)/Math.LN2);
-				var log2Height:int = Math.ceil(Math.log(view._height)/Math.LN2);
+				var log2Width:int = Math.ceil(Math.log(view._width/effectRate)/Math.LN2);
+				var log2Height:int = Math.ceil(Math.log(view._height/effectRate)/Math.LN2);
 				log2Width = log2Width > 11 ? 11 : log2Width;
 				log2Height = log2Height > 11 ? 11 : log2Height;
 				if (effectTextureLog2Width != log2Width || effectTextureLog2Height != log2Height) {
